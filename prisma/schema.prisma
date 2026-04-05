@@ -1,0 +1,269 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+model Organization {
+  id              String    @id @default(uuid())
+  name            String
+  slug            String    @unique
+  tier            String    @default("free")
+  maxLeadsPerDay  Int       @default(50)
+  maxAiTokensPerMonth BigInt @default(1000000)
+  classificationModel  String  @default("gpt-4o-mini")
+  personalizationModel String  @default("gpt-4o")
+  serviceOffering     String?
+  uniqueValue         String?
+  positioningPrompt   String?
+  users           User[]
+  leads           Lead[]
+  campaigns       Campaign[]
+  icpProfiles     ICPProfile[]
+  messages        Message[]
+  conversations   Conversation[]
+  analyticsEvents AnalyticsEvent[]
+  usageRecords    UsageRecord[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String?
+  role            String    @default("member")
+  supabaseUserId  String    @unique
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([organizationId])
+}
+
+model Lead {
+  id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  externalId      String?
+  source          String
+  sourceUrl       String?
+  sourceType      String    @default("intent")
+  name            String
+  headline        String?
+  bio             String?
+  role            String?
+  company         String?
+  companySize     String?
+  industry        String?
+  location        String?
+  email           String?
+  phone           String?
+  website         String?
+  originalContent String?
+  // Intent detection results
+  intentType      String?
+  intentUrgency   String?
+  intentConfidence Float?
+  isBuyer         Boolean   @default(false)
+  intentReasoning String?
+  painPoints      Json?
+  fears           Json?
+  desires         Json?
+  budgetSignal    String?
+  hiringIntent    Boolean   @default(false)
+  // ICP enrichment results
+  icpAttributes   Json?
+  companyStage    String?
+  technicalLevel  String?
+  // Scoring
+  score           Int       @default(0)
+  scoreBreakdown  Json?
+  tier            String    @default("COLD")
+  // Personalization
+  personalizationData Json?
+  personalContext Json?
+  psychology      Json?
+  positioning     Json?
+  toneProfile     String?
+  recommendedChannel String?
+  // Google Maps specific
+  placeId         String?
+  rating          Float?
+  reviewCount     Int?
+  businessType    String?
+  // Status
+  status          String    @default("NEW")
+  // GDPR
+  consentBasis    String    @default("LEGITIMATE_INTEREST")
+  optedOut        Boolean   @default(false)
+  optedOutAt      DateTime?
+  dataExpiresAt   DateTime?
+  contentHash     String?
+  // Relations
+  campaign        Campaign?  @relation(fields: [campaignId], references: [id])
+  campaignId      String?
+  messages        Message[]
+  conversations   Conversation[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@unique([externalId, source, organizationId])
+  @@index([organizationId, tier, status])
+  @@index([organizationId, score])
+  @@index([organizationId, source])
+  @@index([contentHash, organizationId])
+}
+
+model Message {
+  id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId          String
+  campaign        Campaign? @relation(fields: [campaignId], references: [id])
+  campaignId      String?
+  channel         String
+  subject         String?
+  body            String
+  type            String    @default("OUTREACH")
+  personalContext Json?
+  status          String    @default("DRAFT")
+  spamScore       Float?
+  uniquenessScore Float?
+  burntPatterns   Json?
+  promptVersion   String?
+  aiModel         String?
+  aiTokensUsed    Int?
+  approvedBy      String?
+  approvedAt      DateTime?
+  sentAt          DateTime?
+  repliedAt       DateTime?
+  generatedAt     DateTime  @default(now())
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([organizationId, status])
+  @@index([leadId])
+  @@index([campaignId])
+}
+
+model Conversation {
+  id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId          String
+  channel         String    @default("linkedin-dm")
+  messages        Json      @default("[]")
+  messageCount    Int       @default(0)
+  lastMessageAt   DateTime  @default(now())
+  suggestedReply  String?
+  objectionType   String?
+  sentiment       String?
+  closingStrategy String?
+  status          String    @default("ACTIVE")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([organizationId, status])
+  @@index([leadId])
+}
+
+model Campaign {
+  id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  name            String
+  description     String?
+  icpProfileId    String?
+  icpProfile      ICPProfile? @relation(fields: [icpProfileId], references: [id])
+  settings        Json?
+  // Legacy fields preserved for compatibility
+  icpConfig       Json?
+  keywords        Json?
+  sources         Json?
+  targetLocations Json?
+  targetIndustries Json?
+  scoringWeights  Json?
+  positioningPrompt String?
+  // Metrics
+  leadsGenerated  Int       @default(0)
+  messagesSent    Int       @default(0)
+  replies         Int       @default(0)
+  meetings        Int       @default(0)
+  conversions     Int       @default(0)
+  // Relations
+  leads           Lead[]
+  messages        Message[]
+  isActive        Boolean   @default(true)
+  status          String    @default("ACTIVE")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([organizationId, status])
+}
+
+model ICPProfile {
+  id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  name            String
+  version         Int       @default(1)
+  // Unified config object (new) or legacy separate fields
+  config          Json?
+  // Legacy individual fields
+  targetRoles     Json?
+  targetIndustries Json?
+  targetStages    Json?
+  targetLocations Json?
+  buyerSignals    Json?
+  urgencySignals  Json?
+  budgetSignals   Json?
+  // Learned from conversions
+  learnedWeights  Json?
+  conversionRate  Float?
+  isActive        Boolean   @default(true)
+  // Relations
+  campaigns       Campaign[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([organizationId, isActive])
+}
+
+model AnalyticsEvent {
+  id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  eventType       String
+  leadId          String?
+  campaignId      String?
+  data            Json?
+  // Legacy fields
+  entityType      String?
+  entityId        String?
+  metadata        Json?
+  occurredAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  @@index([organizationId, eventType, createdAt])
+  @@index([leadId])
+}
+
+model UsageRecord {
+  id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String
+  date            DateTime  @db.Date
+  aiTokensUsed    BigInt    @default(0)
+  aiCostCents     Int       @default(0)
+  leadsProcessed  Int       @default(0)
+  scrapeRequests  Int       @default(0)
+  scrapesExecuted Int       @default(0)
+  apiCallsMade    Int       @default(0)
+  updatedAt       DateTime  @updatedAt
+  @@unique([organizationId, date])
+  @@index([organizationId, date])
+}

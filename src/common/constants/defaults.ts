@@ -1,0 +1,51 @@
+export const DEFAULTS = {
+  PAGINATION: {
+    PAGE: 1,
+    LIMIT: 20,
+    MAX_LIMIT: 100,
+  },
+
+  SCORING: {
+    HOT_THRESHOLD: 20,
+    WARM_THRESHOLD: 10,
+    MAX_SCORE: 30,
+  },
+
+  DATA_RETENTION_DAYS: 90,
+
+  RATE_LIMITING: {
+    WINDOW_MS: 60_000,
+    MAX_REQUESTS: 100,
+  },
+
+  AI: {
+    MAX_TOKENS: 2048,
+    TEMPERATURE: 0.7,
+    TIMEOUT_MS: 30_000,
+    RETRY_ATTEMPTS: 3,
+  },
+
+  SCRAPING: {
+    CONCURRENT_LIMIT: 5,
+    DELAY_MS: 1_000,
+    TIMEOUT_MS: 30_000,
+    RETRY_ATTEMPTS: 3,
+  },
+
+  QUEUE: {
+    DEFAULT_CONCURRENCY: 5,
+    DEFAULT_ATTEMPTS: 3,
+    DEFAULT_BACKOFF_MS: 5_000,
+  },
+
+  TENANT: {
+    DEFAULT_ORG_ID: 'default',
+    DEFAULT_ROLE: 'member',
+  },
+
+  ORGANIZATION: {
+    MAX_LEADS_PER_DAY: 50,
+    MAX_AI_TOKENS_PER_MONTH: 1_000_000,
+    TIER: 'free',
+  },
+} as const;

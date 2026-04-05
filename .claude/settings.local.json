@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\" && npm install 2>&1 | tail -20)",
+      "Bash(cd \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\" && npx tsc --noEmit 2>&1 | head -100)",
+      "Bash(cd \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\" && npx tsc --noEmit 2>&1)",
+      "Bash(find \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\\\\src\" -type f -name \"*.ts\" -o -type f -name \"*.json\" 2>/dev/null | head -100)",
+      "Bash(cd \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\" && npm run build 2>&1 | head -80)",
+      "Bash(cd \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\" && npm run build 2>&1 | grep \"error TS\" | head -40)",
+      "Bash(cd \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\" && npm run build 2>&1 | grep \"^src/\")",
+      "Bash(for f:*)"
+    ]
+  }
+}
