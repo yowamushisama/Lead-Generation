@@ -54,8 +54,8 @@ export class OrganizationsController {
   }
 
   @Get(':id')
-  @Roles('admin', 'superadmin')
-  @ApiOperation({ summary: 'Get organization by ID' })
+  @Roles('superadmin')
+  @ApiOperation({ summary: 'Get organization by ID (superadmin only)' })
   @ApiResponse({ status: 200, description: 'Organization retrieved' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
   async findOne(

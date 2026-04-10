@@ -27,28 +27,57 @@ export class DailyScrapeJob {
     let totalEnqueued = 0;
 
     for (const org of activeOrgs) {
+      const campaigns = await this.prisma.campaign.findMany({
+        where: { organizationId: org.id, isActive: true, status: 'ACTIVE' },
+        select: { id: true, keywords: true, targetLocations: true, targetIndustries: true },
+      });
+
       const adapters = this.adapterRegistry.getAll();
 
-      for (const adapter of adapters) {
-        const healthy = await adapter.isHealthy().catch(() => false);
-        if (!healthy) continue;
+      // Run each adapter once per campaign so that leads are attributed to the
+      // correct campaign and scored with that campaign's ICP profile.
+      for (const campaign of campaigns) {
+        const keywords = (campaign.keywords as string[] | null) ?? [];
+        const locations = (campaign.targetLocations as string[] | null) ?? [];
+        const industries = (campaign.targetIndustries as string[] | null) ?? [];
 
-        try {
-          const config = { organizationId: org.id };
-          for await (const lead of adapter.collect(config)) {
-            await this.orchestrator.enqueueLead(lead, {
+        for (const adapter of adapters) {
+          const healthy = await adapter.isHealthy().catch(() => false);
+          if (!healthy) continue;
+
+          // Intent adapters (e.g. LinkedIn) require at least one keyword to operate
+          if (adapter.sourceType === 'intent' && keywords.length === 0) {
+            this.logger.warn({
+              message: `Skipping ${adapter.name} for campaign ${campaign.id} — no keywords configured`,
               organizationId: org.id,
-              userId: 'system',
-              mode: TenantMode.SINGLE,
             });
-            totalEnqueued++;
+            continue;
           }
-        } catch (error) {
-          this.logger.error({
-            message: `Adapter collect failed: ${adapter.name}`,
-            organizationId: org.id,
-            error: String(error),
-          });
+
+          try {
+            const config = {
+              organizationId: org.id,
+              campaignId: campaign.id,
+              keywords,
+              locations,
+              industries,
+            };
+            for await (const lead of adapter.collect(config)) {
+              await this.orchestrator.enqueueLead(
+                lead,
+                { organizationId: org.id, userId: 'system', mode: TenantMode.SINGLE },
+                { campaignId: campaign.id },
+              );
+              totalEnqueued++;
+            }
+          } catch (error) {
+            this.logger.error({
+              message: `Adapter collect failed: ${adapter.name}`,
+              organizationId: org.id,
+              campaignId: campaign.id,
+              error: String(error),
+            });
+          }
         }
       }
     }

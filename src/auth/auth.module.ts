@@ -12,12 +12,18 @@ import { ApiKeyStrategy } from './strategies/api-key.strategy';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') ?? 'change-me',
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') ?? '7d',
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('JWT_SECRET environment variable is required but not set. Refusing to start.');
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: configService.get<string>('JWT_EXPIRES_IN') ?? '7d',
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

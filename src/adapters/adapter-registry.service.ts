@@ -3,6 +3,8 @@ import { ISourceAdapter, AdapterConfig } from '../common/interfaces/adapter.inte
 import { RawLeadInput } from '../common/interfaces/lead-input.interface';
 import { CsvAdapter } from './csv/csv.adapter';
 import { WebhookAdapter } from './webhook/webhook.adapter';
+import { LinkedInAdapter } from './linkedin/linkedin.adapter';
+import { GoogleMapsAdapter } from './google-maps/google-maps.adapter';
 
 @Injectable()
 export class AdapterRegistryService implements OnModuleInit {
@@ -12,11 +14,15 @@ export class AdapterRegistryService implements OnModuleInit {
   constructor(
     private readonly csvAdapter: CsvAdapter,
     private readonly webhookAdapter: WebhookAdapter,
+    private readonly linkedInAdapter: LinkedInAdapter,
+    private readonly googleMapsAdapter: GoogleMapsAdapter,
   ) {}
 
   onModuleInit(): void {
     this.register(this.csvAdapter);
     this.register(this.webhookAdapter);
+    this.register(this.linkedInAdapter);
+    this.register(this.googleMapsAdapter);
 
     this.logger.log({
       message: `Adapter registry initialized with ${this.adapters.size} adapters`,

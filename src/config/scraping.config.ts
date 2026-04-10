@@ -7,6 +7,14 @@ export interface ScrapingConfig {
   retryAttempts: number;
   retryBackoffMs: number;
   userAgent: string;
+  // LinkedIn session / stealth
+  linkedinEmail: string | undefined;
+  linkedinPassword: string | undefined;
+  linkedinHeadless: boolean;
+  linkedinProxyList: string | undefined;
+  linkedinSessionTtlMs: number;
+  // Google Maps
+  googleMapsApiKey: string | undefined;
 }
 
 export default registerAs(
@@ -19,5 +27,11 @@ export default registerAs(
     retryBackoffMs: 2000,
     userAgent:
       'Mozilla/5.0 (compatible; LeadGenerationBot/1.0; +https://yourdomain.com/bot)',
+    linkedinEmail: process.env['LINKEDIN_EMAIL'],
+    linkedinPassword: process.env['LINKEDIN_PASSWORD'],
+    linkedinHeadless: process.env['LINKEDIN_HEADLESS'] !== 'false',
+    linkedinProxyList: process.env['LINKEDIN_PROXY_LIST'],
+    linkedinSessionTtlMs: 12 * 60 * 60 * 1000, // 12 hours
+    googleMapsApiKey: process.env['GOOGLE_MAPS_API_KEY'],
   }),
 );

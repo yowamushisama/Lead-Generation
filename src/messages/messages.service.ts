@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -17,6 +23,24 @@ export class MessagesService {
   ) {}
 
   async create(tenant: TenantContext, dto: CreateMessageDto) {
+    // Verify the lead belongs to this tenant and has not opted out
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: dto.leadId, organizationId: tenant.organizationId, optedOut: false },
+    });
+    if (!lead) {
+      throw new ForbiddenException(`Lead ${dto.leadId} not found in your organization or has opted out`);
+    }
+
+    // Verify campaign belongs to this tenant if provided
+    if (dto.campaignId) {
+      const campaign = await this.prisma.campaign.findFirst({
+        where: { id: dto.campaignId, organizationId: tenant.organizationId },
+      });
+      if (!campaign) {
+        throw new ForbiddenException(`Campaign ${dto.campaignId} not found in your organization`);
+      }
+    }
+
     const spamCheck = this.antiSpam.check(dto.body);
 
     return this.prisma.message.create({
@@ -73,35 +97,38 @@ export class MessagesService {
       );
     }
 
-    const updated = await this.prisma.message.update({
-      where: { id },
-      data: {
-        body,
-        subject: dto.editedSubject ?? message.subject,
-        status: MessageStatus.APPROVED,
-        approvedAt: new Date(),
-        approvedBy: tenant.userId,
-        spamScore: spamCheck.spamScore,
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.message.update({
+        where: { id },
+        data: {
+          body,
+          subject: dto.editedSubject ?? message.subject,
+          status: MessageStatus.APPROVED,
+          approvedAt: new Date(),
+          approvedBy: tenant.userId,
+          spamScore: spamCheck.spamScore,
+        },
+      });
 
-    // Update lead status
-    await this.prisma.lead.update({
-      where: { id: message.leadId },
-      data: { status: LeadStatus.MESSAGE_APPROVED },
-    });
+      // Scope lead update by both id and organizationId
+      await tx.lead.updateMany({
+        where: { id: message.leadId, organizationId: tenant.organizationId },
+        data: { status: LeadStatus.MESSAGE_APPROVED },
+      });
 
-    this.logger.log({
-      message: `Message ${id} approved`,
-      organizationId: tenant.organizationId,
-      userId: tenant.userId,
-    });
+      this.logger.log({
+        message: `Message ${id} approved`,
+        organizationId: tenant.organizationId,
+        userId: tenant.userId,
+      });
 
-    return updated;
+      return updated;
+    });
   }
 
   async reject(tenant: TenantContext, id: string, reason?: string) {
-    const message = await this.findOne(tenant, id);
+    // findOne already enforces tenant scope
+    await this.findOne(tenant, id);
 
     return this.prisma.message.update({
       where: { id },
@@ -119,17 +146,20 @@ export class MessagesService {
       throw new BadRequestException('Message must be approved before marking as sent');
     }
 
-    const updated = await this.prisma.message.update({
-      where: { id },
-      data: { status: MessageStatus.SENT, sentAt: new Date() },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.message.update({
+        where: { id },
+        data: { status: MessageStatus.SENT, sentAt: new Date() },
+      });
 
-    await this.prisma.lead.update({
-      where: { id: message.leadId },
-      data: { status: LeadStatus.OUTREACH_SENT },
-    });
+      // Scope lead update by both id and organizationId
+      await tx.lead.updateMany({
+        where: { id: message.leadId, organizationId: tenant.organizationId },
+        data: { status: LeadStatus.OUTREACH_SENT },
+      });
 
-    return updated;
+      return updated;
+    });
   }
 
   async getPendingApproval(tenant: TenantContext) {

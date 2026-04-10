@@ -22,23 +22,28 @@ export class ComplianceService {
     });
     if (!lead) throw new NotFoundException(`Lead ${leadId} not found`);
 
-    // Mark as opted out and schedule deletion in 30 days (time to respond to any in-flight queries)
-    await this.prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        status: LeadStatus.OPT_OUT,
-        optedOutAt: new Date(),
-        dataExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
+    // Mark opted-out atomically — optedOut:true ensures immediate exclusion from
+    // all active lead queries and outreach eligibility checks.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.lead.update({
+        where: { id: leadId },
+        data: {
+          optedOut: true,
+          status: LeadStatus.OPT_OUT,
+          optedOutAt: new Date(),
+          dataExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
 
-    // Cancel any pending messages
-    await this.prisma.message.updateMany({
-      where: {
-        leadId,
-        status: { in: ['PENDING_APPROVAL', 'APPROVED', 'QUEUED'] },
-      },
-      data: { status: 'REJECTED' },
+      // Cancel all in-flight and queued messages for this lead
+      await tx.message.updateMany({
+        where: {
+          leadId,
+          organizationId: tenant.organizationId,
+          status: { in: ['PENDING_APPROVAL', 'APPROVED', 'QUEUED', 'DRAFT'] },
+        },
+        data: { status: 'REJECTED' },
+      });
     });
 
     this.logger.log({

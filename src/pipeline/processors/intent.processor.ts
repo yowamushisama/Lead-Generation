@@ -31,6 +31,7 @@ export class IntentProcessor extends WorkerHost {
       // If no leadId yet, we need to create the lead first
       let resolvedLeadId = leadId;
       if (!resolvedLeadId && rawInput) {
+        const meta = (rawInput.metadata ?? {}) as Record<string, unknown>;
         const lead = await this.prisma.lead.create({
           data: {
             organizationId,
@@ -49,6 +50,12 @@ export class IntentProcessor extends WorkerHost {
             phone: rawInput.phone,
             website: rawInput.website,
             originalContent: rawInput.originalContent,
+            // Persist Google Maps discovery fields to their dedicated columns
+            ...(rawInput.sourceType === 'discovery' && {
+              placeId: meta.placeId as string | undefined,
+              rating: meta.rating as number | undefined,
+              reviewCount: meta.reviewCount as number | undefined,
+            }),
             campaignId,
             status: LeadStatus.NEW,
             tier: 'COLD',
@@ -57,6 +64,13 @@ export class IntentProcessor extends WorkerHost {
           },
         });
         resolvedLeadId = lead.id;
+      }
+
+      // Discovery leads carry no post content for intent classification — route
+      // them directly to scoring via the discovery track.
+      if (rawInput?.sourceType === 'discovery') {
+        await this.orchestrator.enqueueForStage(resolvedLeadId, 'score', context, { campaignId });
+        return;
       }
 
       const content = rawInput?.originalContent ?? '';

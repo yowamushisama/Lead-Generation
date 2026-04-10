@@ -61,22 +61,45 @@ export class AuthService {
       throw new ConflictException('Failed to create authentication account');
     }
 
-    const organization = await this.prismaService.organization.create({
-      data: {
-        name: dto.organizationName,
-        slug: dto.organizationSlug,
-      },
-    });
+    let organization: Awaited<ReturnType<typeof this.prismaService.organization.create>>;
+    let user: Awaited<ReturnType<typeof this.prismaService.user.create>>;
 
-    const user = await this.prismaService.user.create({
-      data: {
+    try {
+      // Both Prisma writes in a single transaction so partial failures are impossible
+      const result = await this.prismaService.$transaction(async (tx) => {
+        const org = await tx.organization.create({
+          data: {
+            name: dto.organizationName,
+            slug: dto.organizationSlug,
+          },
+        });
+
+        const u = await tx.user.create({
+          data: {
+            email: dto.email,
+            name: dto.name,
+            role: 'admin',
+            supabaseUserId: supabaseUser.id,
+            organizationId: org.id,
+          },
+        });
+
+        return { org, u };
+      });
+
+      organization = result.org;
+      user = result.u;
+    } catch (txError) {
+      // Compensate: delete the Supabase user so the email can be retried
+      await this.supabaseService.deleteUser(supabaseUser.id);
+      this.logger.error({
+        message: 'Registration rolled back — Supabase user deleted after Prisma failure',
+        module: 'AuthService',
         email: dto.email,
-        name: dto.name,
-        role: 'admin',
-        supabaseUserId: supabaseUser.id,
-        organizationId: organization.id,
-      },
-    });
+        error: txError instanceof Error ? txError.message : String(txError),
+      });
+      throw txError;
+    }
 
     this.logger.log({
       message: 'User registered',

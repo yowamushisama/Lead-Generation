@@ -7,6 +7,7 @@ import { PipelineJobData } from '../orchestrator.service';
 import { LeadScorerStage } from '../stages/lead-scorer.stage';
 import { PrismaService } from '../../database/prisma.service';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
+import { LeadTier } from '../../common/enums/lead-tier.enum';
 import { OrchestratorService } from '../orchestrator.service';
 import { IntentResult } from '../../common/types/intent.types';
 import { ICPConfig } from '../../common/types/icp.types';
@@ -61,6 +62,16 @@ export class ScoringProcessor extends WorkerHost {
         }
       }
 
+      const sourceType = (lead as any).sourceType as string | undefined;
+      const isDiscovery = sourceType === 'discovery';
+
+      const discoveryMetadata = isDiscovery
+        ? {
+            rating: lead.rating ?? undefined,
+            reviewCount: lead.reviewCount ?? undefined,
+          }
+        : undefined;
+
       const output = await this.scorerStage.process(
         {
           leadId,
@@ -71,6 +82,8 @@ export class ScoringProcessor extends WorkerHost {
           location: lead.location ?? undefined,
           originalContent: lead.originalContent ?? undefined,
           icpConfig,
+          scoringTrack: isDiscovery ? 'discovery' : 'intent',
+          discoveryMetadata,
         },
         context,
       );
@@ -85,8 +98,9 @@ export class ScoringProcessor extends WorkerHost {
         },
       });
 
-      // Only personalize if meets threshold (HOT/WARM leads)
-      if (output.meetsThreshold && output.scoring.score >= 10) {
+      // Only personalize HOT/WARM leads — use the already-computed tier so that
+      // discovery leads are gated by DISCOVERY_THRESHOLDS, not the intent >= 10 cutoff.
+      if (output.meetsThreshold && output.scoring.tier !== LeadTier.COLD) {
         await this.orchestrator.enqueueForStage(leadId, 'personalize', context, { campaignId });
       } else {
         this.logger.log({

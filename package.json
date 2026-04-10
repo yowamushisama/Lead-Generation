@@ -18,6 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "linkedin:test-live": "npm run build && node dist/scripts/test-linkedin-adapter.js",
+    "linkedin:dump-dom": "npm run build && node dist/scripts/dump-linkedin-dom.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
@@ -25,6 +27,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
+    "@googlemaps/google-maps-services-js": "^3.4.2",
     "@nestjs/bullmq": "^10.0.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
@@ -45,6 +48,9 @@
     "openai": "^6.33.0",
     "passport": "^0.6.0",
     "passport-jwt": "^4.0.0",
+    "playwright": "^1.59.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0",
     "uuid": "^9.0.0"

@@ -139,7 +139,7 @@ export class LeadsService {
 
   async findOne(organizationId: string, id: string): Promise<unknown> {
     const lead = await this.prismaService.lead.findFirst({
-      where: { id, organizationId },
+      where: { id, organizationId, optedOut: false },
       include: {
         messages: {
           orderBy: { createdAt: 'desc' },

@@ -108,6 +108,24 @@ export class SupabaseService implements OnModuleInit {
     }
   }
 
+  async deleteUser(supabaseUserId: string): Promise<void> {
+    try {
+      const { error } = await this.adminClient.auth.admin.deleteUser(supabaseUserId);
+      if (error) {
+        this.logger.error({
+          message: `Failed to delete Supabase user ${supabaseUserId}: ${error.message}`,
+          module: 'SupabaseService',
+        });
+      }
+    } catch (err) {
+      this.logger.error({
+        message: `Exception deleting Supabase user ${supabaseUserId}`,
+        module: 'SupabaseService',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async isHealthy(): Promise<boolean> {
     try {
       const { error } = await this.adminClient.from('Organization').select('id').limit(1);
