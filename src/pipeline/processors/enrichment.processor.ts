@@ -34,7 +34,13 @@ export class EnrichmentProcessor extends WorkerHost {
       const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
       const serviceOffering = org?.serviceOffering ?? 'software development services';
 
-      const profileContent = [lead.bio, lead.headline, lead.originalContent, lead.role, lead.company]
+      const profileContent = [
+        lead.bio,
+        lead.headline,
+        lead.originalContent,
+        lead.role,
+        lead.company,
+      ]
         .filter(Boolean)
         .join('\n');
 
@@ -47,7 +53,8 @@ export class EnrichmentProcessor extends WorkerHost {
         where: { id: leadId },
         data: {
           role: output.attributes.role !== 'Unknown' ? output.attributes.role : lead.role,
-          industry: output.attributes.industry !== 'Unknown' ? output.attributes.industry : lead.industry,
+          industry:
+            output.attributes.industry !== 'Unknown' ? output.attributes.industry : lead.industry,
           icpAttributes: output.attributes as never,
           status: LeadStatus.ENRICHED,
         },
@@ -55,7 +62,11 @@ export class EnrichmentProcessor extends WorkerHost {
 
       await this.orchestrator.enqueueForStage(leadId, 'score', context, { campaignId });
     } catch (error) {
-      this.logger.error({ message: `Enrichment processor error`, jobId: job.id, error: String(error) });
+      this.logger.error({
+        message: `Enrichment processor error`,
+        jobId: job.id,
+        error: String(error),
+      });
       throw error;
     }
   }

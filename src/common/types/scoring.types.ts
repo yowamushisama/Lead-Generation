@@ -20,10 +20,10 @@ export interface ScoringResult {
 
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   intentConfidence: 0.25,
-  urgencyLevel: 0.20,
-  icpMatch: 0.20,
+  urgencyLevel: 0.2,
+  icpMatch: 0.2,
   companyFit: 0.15,
-  engagementSignals: 0.10,
+  engagementSignals: 0.1,
   budgetSignals: 0.05,
   hiringIntent: 0.03,
   buyerRole: 0.02,

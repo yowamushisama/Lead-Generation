@@ -35,9 +35,7 @@ export interface ICPEnrichmentOutput {
 }
 
 @Injectable()
-export class ICPEnricherStage
-  implements IPipelineStage<ICPEnrichmentInput, ICPEnrichmentOutput>
-{
+export class ICPEnricherStage implements IPipelineStage<ICPEnrichmentInput, ICPEnrichmentOutput> {
   readonly stageName = 'icp-enricher';
   private readonly logger = new Logger(ICPEnricherStage.name);
 

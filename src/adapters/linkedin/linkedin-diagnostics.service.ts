@@ -12,7 +12,7 @@ interface DiagnosticsContext {
 
 /** Audit result for a single selector group */
 export interface SelectorGroupAudit {
-  active: string | null;   // first selector that returned ≥1 element
+  active: string | null; // first selector that returned ≥1 element
   counts: Record<string, number>;
 }
 
@@ -64,82 +64,91 @@ export class LinkedInDiagnosticsService {
     const sel = LINKEDIN_SELECTORS;
 
     const audit = await page
-      .evaluate(
-        (s) => {
-          function auditGroup(selectors: string[]): { active: string | null; counts: Record<string, number> } {
-            const counts: Record<string, number> = {};
-            let active: string | null = null;
-            for (const css of selectors) {
-              try {
-                const n = document.querySelectorAll(css).length;
-                counts[css] = n;
-                if (n > 0 && active === null) active = css;
-              } catch {
-                counts[css] = -1; // invalid selector
-              }
-            }
-            return { active, counts };
-          }
-
-          // Count cards from the winning container selector
-          let totalCards = 0;
-          for (const css of s.postContainers) {
+      .evaluate((s) => {
+        function auditGroup(selectors: string[]): {
+          active: string | null;
+          counts: Record<string, number>;
+        } {
+          const counts: Record<string, number> = {};
+          let active: string | null = null;
+          for (const css of selectors) {
             try {
               const n = document.querySelectorAll(css).length;
-              if (n > 0) { totalCards = n; break; }
-            } catch { /* skip */ }
+              counts[css] = n;
+              if (n > 0 && active === null) active = css;
+            } catch {
+              counts[css] = -1; // invalid selector
+            }
           }
+          return { active, counts };
+        }
 
-          // First card for HTML inspection
-          const firstCard =
-            document.querySelector('[data-urn*="activity"]') ??
-            document.querySelector('.occludable-update') ??
-            document.querySelector('[data-urn]');
-
-          const firstCardHtml = firstCard ? firstCard.outerHTML.slice(0, 4000) : null;
-
-          const firstCardLinks: string[] = [];
-          if (firstCard) {
-            firstCard.querySelectorAll('a[href]').forEach((a) => {
-              const href = a.getAttribute('href') ?? '';
-              if (href && !firstCardLinks.includes(href.slice(0, 100))) {
-                firstCardLinks.push(href.slice(0, 100));
-              }
-            });
+        // Count cards from the winning container selector
+        let totalCards = 0;
+        for (const css of s.postContainers) {
+          try {
+            const n = document.querySelectorAll(css).length;
+            if (n > 0) {
+              totalCards = n;
+              break;
+            }
+          } catch {
+            /* skip */
           }
+        }
 
-          return {
-            url: window.location.href,
-            selectorVersion: s.version,
-            postContainers: auditGroup(s.postContainers),
-            authorName: auditGroup(s.authorName),
-            authorLink: auditGroup(s.authorLink),
-            content: auditGroup(s.content),
-            headline: auditGroup(s.headline),
-            postedAt: auditGroup(s.postedAt),
-            totalCards,
-            firstCardLinks,
-            firstCardHtml,
-          } as {
-            url: string;
-            selectorVersion: number;
-            postContainers: { active: string | null; counts: Record<string, number> };
-            authorName: { active: string | null; counts: Record<string, number> };
-            authorLink: { active: string | null; counts: Record<string, number> };
-            content: { active: string | null; counts: Record<string, number> };
-            headline: { active: string | null; counts: Record<string, number> };
-            postedAt: { active: string | null; counts: Record<string, number> };
-            totalCards: number;
-            firstCardLinks: string[];
-            firstCardHtml: string | null;
-          };
-        },
-        sel,
-      )
+        // First card for HTML inspection
+        const firstCard =
+          document.querySelector('[data-urn*="activity"]') ??
+          document.querySelector('.occludable-update') ??
+          document.querySelector('[data-urn]');
+
+        const firstCardHtml = firstCard ? firstCard.outerHTML.slice(0, 4000) : null;
+
+        const firstCardLinks: string[] = [];
+        if (firstCard) {
+          firstCard.querySelectorAll('a[href]').forEach((a) => {
+            const href = a.getAttribute('href') ?? '';
+            if (href && !firstCardLinks.includes(href.slice(0, 100))) {
+              firstCardLinks.push(href.slice(0, 100));
+            }
+          });
+        }
+
+        return {
+          url: window.location.href,
+          selectorVersion: s.version,
+          postContainers: auditGroup(s.postContainers),
+          authorName: auditGroup(s.authorName),
+          authorLink: auditGroup(s.authorLink),
+          content: auditGroup(s.content),
+          headline: auditGroup(s.headline),
+          postedAt: auditGroup(s.postedAt),
+          totalCards,
+          firstCardLinks,
+          firstCardHtml,
+        } as {
+          url: string;
+          selectorVersion: number;
+          postContainers: { active: string | null; counts: Record<string, number> };
+          authorName: { active: string | null; counts: Record<string, number> };
+          authorLink: { active: string | null; counts: Record<string, number> };
+          content: { active: string | null; counts: Record<string, number> };
+          headline: { active: string | null; counts: Record<string, number> };
+          postedAt: { active: string | null; counts: Record<string, number> };
+          totalCards: number;
+          firstCardLinks: string[];
+          firstCardHtml: string | null;
+        };
+      }, sel)
       .catch(() => null);
 
     if (!audit) {
-      this.logger.debug({ message: 'LinkedIn search diagnostics failed', module: 'linkedin', ...context });
+      this.logger.debug({
+        message: 'LinkedIn search diagnostics failed',
+        module: 'linkedin',
+        ...context,
+      });
       return null;
     }
 

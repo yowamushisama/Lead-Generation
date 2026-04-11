@@ -52,7 +52,9 @@ export class LinkedInAdapter extends BaseAdapter {
 
     const keywords = config.keywords ?? [];
     if (keywords.length === 0) {
-      this.logWarn('No keywords configured for LinkedIn adapter', { organizationId: config.organizationId });
+      this.logWarn('No keywords configured for LinkedIn adapter', {
+        organizationId: config.organizationId,
+      });
       return;
     }
 
@@ -163,112 +165,134 @@ export class LinkedInAdapter extends BaseAdapter {
       }
     }
 
-    this.log(`LinkedIn collect complete: ${yielded} leads`, { organizationId: config.organizationId });
+    this.log(`LinkedIn collect complete: ${yielded} leads`, {
+      organizationId: config.organizationId,
+    });
   }
 
   private async extractPosts(page: Page): Promise<LinkedInPost[]> {
     // Selectors are passed from Node context into the browser evaluate — edit
     // linkedin-selectors.config.ts to fix selector drift without touching this logic.
-    return (page as any).evaluate((sel: LinkedInSelectors) => {
-      // ── Utility: first matching element from an ordered selector list ──────
-      function firstMatch(parent: Element | Document, selectors: string[]): Element | null {
-        for (const s of selectors) {
-          try {
-            const el = parent.querySelector(s);
-            if (el) return el;
-          } catch { /* skip invalid selector */ }
-        }
-        return null;
-      }
-
-      // ── Collect post card containers ────────────────────────────────────────
-      let cards: Element[] = [];
-      for (const containerSel of sel.postContainers) {
-        const found = Array.from(document.querySelectorAll(containerSel));
-        if (found.length > 0) { cards = found; break; }
-      }
-      if (cards.length === 0) {
-        // Last resort: [data-urn] elements that contain a text block
-        const requiresSel = sel.postContainerFallbackRequires.join(', ');
-        cards = Array.from(document.querySelectorAll('[data-urn]')).filter(
-          (el) => el.querySelector(requiresSel),
-        );
-      }
-
-      // Deduplicate by urn (nested [data-urn] elements can cause duplicates)
-      const seen = new Set<string>();
-      cards = cards.filter((el) => {
-        const key = el.getAttribute('data-urn') ?? el.outerHTML.slice(0, 100);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-      return cards
-        .map((card) => {
-          // ── Author ────────────────────────────────────────────────────────
-          const nameEl = firstMatch(card, sel.authorName);
-
-          // Name text — prefer aria-hidden span which holds the rendered text
-          const nameSpan =
-            (nameEl?.querySelector('span[aria-hidden="true"]') as HTMLElement | null) ?? nameEl;
-          const authorName = nameSpan?.textContent?.trim() ?? '';
-
-          // Profile href: use the name element if it's an <a>, else look for a link
-          const hrefEl: Element | null =
-            (nameEl instanceof HTMLAnchorElement ? nameEl : null) ??
-            firstMatch(card, sel.authorLink);
-          const rawHref = (hrefEl as HTMLAnchorElement | null)?.getAttribute('href') ?? '';
-
-          let authorUrl = '';
-          if (rawHref.startsWith('/in/')) {
-            authorUrl = rawHref.split('?')[0];
-          } else if (rawHref.includes('linkedin.com/in/')) {
-            try { authorUrl = new URL(rawHref).pathname.split('?')[0]; }
-            catch { authorUrl = rawHref.split('?')[0]; }
-          }
-
-          // ── Headline ──────────────────────────────────────────────────────
-          const headlineEl = firstMatch(card, sel.headline);
-          const headlineSpan =
-            (headlineEl?.querySelector('span[aria-hidden="true"]') as HTMLElement | null) ??
-            headlineEl;
-          const headline = headlineSpan?.textContent?.trim() ?? '';
-
-          // ── Content ───────────────────────────────────────────────────────
-          const contentEl = firstMatch(card, sel.content);
-          const contentText = (() => {
-            if (!contentEl) return '';
-            // Collect all aria-hidden text segments (LinkedIn duplicates text for a11y)
-            const ariaSpans = contentEl.querySelectorAll('span[aria-hidden="true"]');
-            if (ariaSpans.length > 0) {
-              return Array.from(ariaSpans)
-                .map((s) => s.textContent?.trim() ?? '')
-                .filter(Boolean)
-                .join(' ');
+    return (page as any).evaluate(
+      (sel: LinkedInSelectors) => {
+        // ── Utility: first matching element from an ordered selector list ──────
+        function firstMatch(parent: Element | Document, selectors: string[]): Element | null {
+          for (const s of selectors) {
+            try {
+              const el = parent.querySelector(s);
+              if (el) return el;
+            } catch {
+              /* skip invalid selector */
             }
-            return contentEl.textContent?.trim() ?? '';
-          })();
+          }
+          return null;
+        }
 
-          // ── Posted-at ─────────────────────────────────────────────────────
-          const timeEl = firstMatch(card, sel.postedAt);
-          const postedAt =
-            (timeEl as HTMLTimeElement | null)?.getAttribute('datetime') ??
-            timeEl?.textContent?.trim() ?? '';
+        // ── Collect post card containers ────────────────────────────────────────
+        let cards: Element[] = [];
+        for (const containerSel of sel.postContainers) {
+          const found = Array.from(document.querySelectorAll(containerSel));
+          if (found.length > 0) {
+            cards = found;
+            break;
+          }
+        }
+        if (cards.length === 0) {
+          // Last resort: [data-urn] elements that contain a text block
+          const requiresSel = sel.postContainerFallbackRequires.join(', ');
+          cards = Array.from(document.querySelectorAll('[data-urn]')).filter((el) =>
+            el.querySelector(requiresSel),
+          );
+        }
 
-          return { authorName, authorUrl, headline, content: contentText, postedAt };
-        })
-        .filter((p) => p.content.length > 10); // require meaningful content; author is optional
-    }, LINKEDIN_SELECTORS as unknown as LinkedInSelectors);
+        // Deduplicate by urn (nested [data-urn] elements can cause duplicates)
+        const seen = new Set<string>();
+        cards = cards.filter((el) => {
+          const key = el.getAttribute('data-urn') ?? el.outerHTML.slice(0, 100);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        return cards
+          .map((card) => {
+            // ── Author ────────────────────────────────────────────────────────
+            const nameEl = firstMatch(card, sel.authorName);
+
+            // Name text — prefer aria-hidden span which holds the rendered text
+            const nameSpan =
+              (nameEl?.querySelector('span[aria-hidden="true"]') as HTMLElement | null) ?? nameEl;
+            const authorName = nameSpan?.textContent?.trim() ?? '';
+
+            // Profile href: use the name element if it's an <a>, else look for a link
+            const hrefEl: Element | null =
+              (nameEl instanceof HTMLAnchorElement ? nameEl : null) ??
+              firstMatch(card, sel.authorLink);
+            const rawHref = (hrefEl as HTMLAnchorElement | null)?.getAttribute('href') ?? '';
+
+            let authorUrl = '';
+            if (rawHref.startsWith('/in/')) {
+              authorUrl = rawHref.split('?')[0];
+            } else if (rawHref.includes('linkedin.com/in/')) {
+              try {
+                authorUrl = new URL(rawHref).pathname.split('?')[0];
+              } catch {
+                authorUrl = rawHref.split('?')[0];
+              }
+            }
+
+            // ── Headline ──────────────────────────────────────────────────────
+            const headlineEl = firstMatch(card, sel.headline);
+            const headlineSpan =
+              (headlineEl?.querySelector('span[aria-hidden="true"]') as HTMLElement | null) ??
+              headlineEl;
+            const headline = headlineSpan?.textContent?.trim() ?? '';
+
+            // ── Content ───────────────────────────────────────────────────────
+            const contentEl = firstMatch(card, sel.content);
+            const contentText = (() => {
+              if (!contentEl) return '';
+              // Collect all aria-hidden text segments (LinkedIn duplicates text for a11y)
+              const ariaSpans = contentEl.querySelectorAll('span[aria-hidden="true"]');
+              if (ariaSpans.length > 0) {
+                return Array.from(ariaSpans)
+                  .map((s) => s.textContent?.trim() ?? '')
+                  .filter(Boolean)
+                  .join(' ');
+              }
+              return contentEl.textContent?.trim() ?? '';
+            })();
+
+            // ── Posted-at ─────────────────────────────────────────────────────
+            const timeEl = firstMatch(card, sel.postedAt);
+            const postedAt =
+              (timeEl as HTMLTimeElement | null)?.getAttribute('datetime') ??
+              timeEl?.textContent?.trim() ??
+              '';
+
+            return { authorName, authorUrl, headline, content: contentText, postedAt };
+          })
+          .filter((p) => p.content.length > 10); // require meaningful content; author is optional
+      },
+      LINKEDIN_SELECTORS as unknown as LinkedInSelectors,
+    );
   }
 
   private async isRateLimited(page: Page): Promise<boolean> {
     const url = page.url();
-    return (
+    const urlBlocked =
       url.includes('checkpoint') ||
       url.includes('captcha') ||
       url.includes('authwall') ||
-      url.includes('challenge')
-    );
+      url.includes('challenge');
+    if (urlBlocked) return true;
+
+    // Soft-block detection: LinkedIn may show an inline CAPTCHA/challenge
+    // without changing the URL. Check for known challenge DOM elements.
+    for (const sel of LINKEDIN_SELECTORS.captchaDetection) {
+      const el = await (page as any).$(sel).catch(() => null);
+      if (el) return true;
+    }
+    return false;
   }
 }

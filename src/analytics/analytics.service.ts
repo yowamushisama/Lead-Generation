@@ -59,8 +59,8 @@ export class AnalyticsService {
       },
       outreach: {
         messagesSent: sent,
-        replyRate: sent > 0 ? (replied / sent) : 0,
-        conversionRate: totalLeads > 0 ? (converted / totalLeads) : 0,
+        replyRate: sent > 0 ? replied / sent : 0,
+        conversionRate: totalLeads > 0 ? converted / totalLeads : 0,
         byStatus: msgMap,
       },
       usage: monthlyUsage,
@@ -71,9 +71,16 @@ export class AnalyticsService {
     const { organizationId } = tenant;
 
     const stages = [
-      'NEW', 'ENRICHED', 'SCORED', 'PERSONALIZED',
-      'MESSAGE_DRAFTED', 'MESSAGE_APPROVED', 'OUTREACH_SENT',
-      'REPLIED', 'MEETING_BOOKED', 'CONVERTED',
+      'NEW',
+      'ENRICHED',
+      'SCORED',
+      'PERSONALIZED',
+      'MESSAGE_DRAFTED',
+      'MESSAGE_APPROVED',
+      'OUTREACH_SENT',
+      'REPLIED',
+      'MEETING_BOOKED',
+      'CONVERTED',
     ];
 
     const counts = await this.prisma.lead.groupBy({

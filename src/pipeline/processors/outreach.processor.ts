@@ -79,7 +79,11 @@ export class OutreachProcessor extends WorkerHost {
         organizationId,
       });
     } catch (error) {
-      this.logger.error({ message: `Outreach processor error`, jobId: job.id, error: String(error) });
+      this.logger.error({
+        message: `Outreach processor error`,
+        jobId: job.id,
+        error: String(error),
+      });
       throw error;
     }
   }

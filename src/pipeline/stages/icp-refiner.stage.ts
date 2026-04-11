@@ -46,7 +46,8 @@ export class ICPRefinerStage implements IPipelineStage<ICPRefinerInput, ICPRefin
     for (const lead of input.convertedLeadAttributes) {
       if (lead.role) roleCounts[lead.role] = (roleCounts[lead.role] ?? 0) + 1;
       if (lead.industry) industryCounts[lead.industry] = (industryCounts[lead.industry] ?? 0) + 1;
-      if (lead.companyStage) stageCounts[lead.companyStage] = (stageCounts[lead.companyStage] ?? 0) + 1;
+      if (lead.companyStage)
+        stageCounts[lead.companyStage] = (stageCounts[lead.companyStage] ?? 0) + 1;
     }
 
     const currentWeights = (profile.learnedWeights as Record<string, number>) ?? {};
@@ -64,7 +65,8 @@ export class ICPRefinerStage implements IPipelineStage<ICPRefinerInput, ICPRefin
         (currentWeights[`industry:${industry}`] ?? 0) * 0.7 + newWeight * 0.3;
     }
 
-    const conversionRate = total > 0 ? total / Math.max(total * 10, 1) : profile.conversionRate ?? 0;
+    const conversionRate =
+      total > 0 ? total / Math.max(total * 10, 1) : (profile.conversionRate ?? 0);
 
     const updated = await this.prisma.iCPProfile.update({
       where: { id: input.icpProfileId },

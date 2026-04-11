@@ -35,15 +35,19 @@ export interface ConversationStageOutput {
 }
 
 @Injectable()
-export class ConversationAssistantStage
-  implements IPipelineStage<ConversationStageInput, ConversationStageOutput>
-{
+export class ConversationAssistantStage implements IPipelineStage<
+  ConversationStageInput,
+  ConversationStageOutput
+> {
   readonly stageName = 'conversation-assistant';
   private readonly logger = new Logger(ConversationAssistantStage.name);
 
   constructor(private readonly aiFactory: AIProviderFactory) {}
 
-  async process(input: ConversationStageInput, context: TenantContext): Promise<ConversationStageOutput> {
+  async process(
+    input: ConversationStageInput,
+    context: TenantContext,
+  ): Promise<ConversationStageOutput> {
     const provider = this.aiFactory.getPersonalizationProvider(input.personalizationModel);
 
     const prompt = buildConversationReplyPrompt({

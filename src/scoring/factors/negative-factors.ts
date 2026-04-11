@@ -23,7 +23,13 @@ const JOB_SEEKER_SIGNALS = [
 
 export function scoreNegativeFactors(content?: string): ScoringFactor {
   if (!content) {
-    return { name: 'negative', weight: 1, score: 0, maxPossible: 0, reasoning: 'No negative signals' };
+    return {
+      name: 'negative',
+      weight: 1,
+      score: 0,
+      maxPossible: 0,
+      reasoning: 'No negative signals',
+    };
   }
 
   let penalty = 0;

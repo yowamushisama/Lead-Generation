@@ -63,7 +63,7 @@ export class ICPService {
     if (dto.config !== undefined) {
       // Merge config
       const existing = await this.findOne(tenant, id);
-      updateData.config = { ...((existing.config as unknown) as ICPConfig), ...dto.config };
+      updateData.config = { ...(existing.config as unknown as ICPConfig), ...dto.config };
       updateData.version = { increment: 1 };
     }
 
@@ -76,10 +76,16 @@ export class ICPService {
   ): Promise<ICPMatch> {
     const profile = await this.findActive(organizationId);
     if (!profile) {
-      return { isMatch: false, matchScore: 0, matchedSignals: [], missedSignals: [], reasoning: 'No active ICP profile' };
+      return {
+        isMatch: false,
+        matchScore: 0,
+        matchedSignals: [],
+        missedSignals: [],
+        reasoning: 'No active ICP profile',
+      };
     }
 
-    const config = (profile.config as unknown) as ICPConfig;
+    const config = profile.config as unknown as ICPConfig;
     const learnedWeights = (profile.learnedWeights as Record<string, number>) ?? {};
     const matched: string[] = [];
     const missed: string[] = [];

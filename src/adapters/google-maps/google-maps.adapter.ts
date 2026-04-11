@@ -8,6 +8,8 @@ import { LeadSource } from '../../common/enums/lead-source.enum';
 
 // Delay required by Google between paginated requests using next_page_token
 const PAGINATION_DELAY_MS = 2000;
+// Delay between individual location×industry query combinations to avoid quota exhaustion
+const INTER_QUERY_DELAY_MS = 200;
 
 @Injectable()
 export class GoogleMapsAdapter extends BaseAdapter {
@@ -63,6 +65,11 @@ export class GoogleMapsAdapter extends BaseAdapter {
       for (const industry of industries) {
         if (yielded >= maxResults) break;
 
+        if (yielded > 0) {
+          // Brief pause between query combinations to avoid exhausting quota
+          await new Promise<void>((resolve) => setTimeout(resolve, INTER_QUERY_DELAY_MS));
+        }
+
         const query = `${industry} in ${location}`;
         this.log(`Searching Google Maps: "${query}"`, { organizationId: config.organizationId });
 
@@ -88,6 +95,8 @@ export class GoogleMapsAdapter extends BaseAdapter {
                 externalId: place.place_id,
                 source: LeadSource.GOOGLE_MAPS,
                 sourceType: 'discovery',
+                // NOTE: textSearch does not return website; a Place Details API call
+                // per result is required to populate this field reliably.
                 sourceUrl: (place as any).website ?? undefined,
                 name: place.name ?? 'Unknown Business',
                 company: place.name ?? undefined,

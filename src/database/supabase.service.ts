@@ -75,10 +75,7 @@ export class SupabaseService implements OnModuleInit {
     }
   }
 
-  async createUser(
-    email: string,
-    password: string,
-  ): Promise<{ id: string; email: string } | null> {
+  async createUser(email: string, password: string): Promise<{ id: string; email: string } | null> {
     try {
       const { data, error } = await this.adminClient.auth.admin.createUser({
         email,

@@ -15,7 +15,9 @@ import { ApiKeyStrategy } from './strategies/api-key.strategy';
       useFactory: (configService: ConfigService) => {
         const secret = configService.get<string>('JWT_SECRET');
         if (!secret) {
-          throw new Error('JWT_SECRET environment variable is required but not set. Refusing to start.');
+          throw new Error(
+            'JWT_SECRET environment variable is required but not set. Refusing to start.',
+          );
         }
         return {
           secret,

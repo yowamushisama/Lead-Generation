@@ -48,7 +48,10 @@ export class UsageMeteringService {
 
     const monthlyTokenLimit = Number(org.maxAiTokensPerMonth);
     if (monthly.aiTokensUsed >= monthlyTokenLimit) {
-      return { withinLimits: false, reason: `Monthly AI token limit reached (${monthlyTokenLimit})` };
+      return {
+        withinLimits: false,
+        reason: `Monthly AI token limit reached (${monthlyTokenLimit})`,
+      };
     }
 
     return { withinLimits: true };

@@ -43,9 +43,17 @@ export class LinkedInSessionService {
           return page;
         }
 
-        this.logger.warn({ message: 'Cached session expired — re-authenticating', email });
+        this.logger.warn({
+          message: 'Cached session expired — invalidating and re-authenticating',
+          email,
+        });
+        await this.redis.del(sessionKey);
       } catch (error) {
-        this.logger.warn({ message: 'Failed to restore session — re-authenticating', error: String(error) });
+        this.logger.warn({
+          message: 'Failed to restore session — invalidating and re-authenticating',
+          error: String(error),
+        });
+        await this.redis.del(sessionKey);
       }
     }
 
@@ -91,10 +99,12 @@ export class LinkedInSessionService {
 
     await (page as any).click('[data-litms-control-urn="login-submit"]');
 
-    await (page as any).waitForNavigation({
-      waitUntil: 'domcontentloaded',
-      timeout: 20000,
-    }).catch(() => {});
+    await (page as any)
+      .waitForNavigation({
+        waitUntil: 'domcontentloaded',
+        timeout: 20000,
+      })
+      .catch(() => {});
 
     await this.diagnostics.logPageState(page, { phase: 'post-login', email });
 
@@ -111,8 +121,7 @@ export class LinkedInSessionService {
 
     const cookies = await (page.context() as any).cookies();
     const sessionKey = `${SESSION_KEY_PREFIX}${email}`;
-    await this.redis.set(sessionKey, JSON.stringify(cookies));
-    await this.redis.expire(sessionKey, SESSION_TTL_SECONDS);
+    await this.redis.set(sessionKey, JSON.stringify(cookies), SESSION_TTL_SECONDS);
 
     this.logger.log({ message: 'LinkedIn login successful — session cached in Redis', email });
   }

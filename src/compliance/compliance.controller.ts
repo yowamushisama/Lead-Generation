@@ -21,28 +21,19 @@ export class ComplianceController {
 
   @Post('opt-out/:leadId')
   @ApiOperation({ summary: 'Process opt-out request for a lead (GDPR)' })
-  processOptOut(
-    @Tenant() tenant: TenantContext,
-    @Param('leadId', ParseUUIDPipe) leadId: string,
-  ) {
+  processOptOut(@Tenant() tenant: TenantContext, @Param('leadId', ParseUUIDPipe) leadId: string) {
     return this.complianceService.processOptOut(tenant, leadId);
   }
 
   @Get('export/:leadId')
   @ApiOperation({ summary: 'Export all data for a lead (GDPR right of access)' })
-  exportLeadData(
-    @Tenant() tenant: TenantContext,
-    @Param('leadId', ParseUUIDPipe) leadId: string,
-  ) {
+  exportLeadData(@Tenant() tenant: TenantContext, @Param('leadId', ParseUUIDPipe) leadId: string) {
     return this.complianceService.exportLeadData(tenant, leadId);
   }
 
   @Delete('leads/:leadId')
   @ApiOperation({ summary: 'Permanently delete lead data (GDPR right to erasure)' })
-  deleteLeadData(
-    @Tenant() tenant: TenantContext,
-    @Param('leadId', ParseUUIDPipe) leadId: string,
-  ) {
+  deleteLeadData(@Tenant() tenant: TenantContext, @Param('leadId', ParseUUIDPipe) leadId: string) {
     return this.complianceService.deleteLeadData(tenant, leadId);
   }
 }

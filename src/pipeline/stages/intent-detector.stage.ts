@@ -3,7 +3,10 @@ import { IPipelineStage } from '../../common/interfaces/pipeline-stage.interface
 import { TenantContext } from '../../common/interfaces/tenant-context.interface';
 import { IntentResult } from '../../common/types/intent.types';
 import { AIProviderFactory } from '../../ai/ai-provider.factory';
-import { buildIntentPrompt, INTENT_DETECTION_SYSTEM_PROMPT } from '../../ai/prompts/intent-detection.prompt';
+import {
+  buildIntentPrompt,
+  INTENT_DETECTION_SYSTEM_PROMPT,
+} from '../../ai/prompts/intent-detection.prompt';
 
 export interface IntentStageInput {
   leadId: string;

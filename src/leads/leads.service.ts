@@ -108,7 +108,10 @@ export class LeadsService {
       ...(filter.campaignId && { campaignId: filter.campaignId }),
       ...(filter.minScore !== undefined && { score: { gte: filter.minScore } }),
       ...(filter.maxScore !== undefined && {
-        score: { ...(filter.minScore !== undefined ? { gte: filter.minScore } : {}), lte: filter.maxScore },
+        score: {
+          ...(filter.minScore !== undefined ? { gte: filter.minScore } : {}),
+          lte: filter.maxScore,
+        },
       }),
       ...(filter.industry && { industry: { contains: filter.industry, mode: 'insensitive' } }),
       ...(filter.location && { location: { contains: filter.location, mode: 'insensitive' } }),

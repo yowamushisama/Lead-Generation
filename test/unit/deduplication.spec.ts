@@ -217,7 +217,7 @@ describe('DeduplicationService', () => {
         .mockResolvedValueOnce(75) // with email
         .mockResolvedValueOnce(90); // with hash
 
-      const stats = await service.getDeduplicationStats('org-123') as Record<string, unknown>;
+      const stats = (await service.getDeduplicationStats('org-123')) as Record<string, unknown>;
 
       expect(stats['totalLeads']).toBe(100);
       expect(stats['leadsWithEmail']).toBe(75);
@@ -231,7 +231,7 @@ describe('DeduplicationService', () => {
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0);
 
-      const stats = await service.getDeduplicationStats('org-empty') as Record<string, unknown>;
+      const stats = (await service.getDeduplicationStats('org-empty')) as Record<string, unknown>;
       expect(stats['deduplicationCoverage']).toBe(0);
     });
   });

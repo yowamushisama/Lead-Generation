@@ -63,7 +63,11 @@ export class PersonalizationProcessor extends WorkerHost {
 
       await this.orchestrator.enqueueForStage(leadId, 'outreach', context, { campaignId });
     } catch (error) {
-      this.logger.error({ message: `Personalization processor error`, jobId: job.id, error: String(error) });
+      this.logger.error({
+        message: `Personalization processor error`,
+        jobId: job.id,
+        error: String(error),
+      });
       throw error;
     }
   }

@@ -75,10 +75,7 @@ export class AdapterRegistryService implements OnModuleInit {
     return this.getAll().filter((adapter) => adapter.sourceType === sourceType);
   }
 
-  async *collect(
-    adapterName: string,
-    config: AdapterConfig,
-  ): AsyncGenerator<RawLeadInput> {
+  async *collect(adapterName: string, config: AdapterConfig): AsyncGenerator<RawLeadInput> {
     const adapter = this.get(adapterName);
     const isHealthy = await adapter.isHealthy();
 

@@ -21,20 +21,18 @@ export class LinkedInProxyService {
       return;
     }
 
-    this.proxies = proxyList
-      .split(',')
-      .reduce<ProxyConfig[]>((acc, raw) => {
-        const trimmed = raw.trim();
-        const [host, port, username, password] = trimmed.split(':');
-        if (!host || !port) return acc;
-        acc.push({
-          server: `http://${host}:${port}`,
-          username: username ?? undefined,
-          password: password ?? undefined,
-          raw: trimmed,
-        });
-        return acc;
-      }, []);
+    this.proxies = proxyList.split(',').reduce<ProxyConfig[]>((acc, raw) => {
+      const trimmed = raw.trim();
+      const [host, port, username, password] = trimmed.split(':');
+      if (!host || !port) return acc;
+      acc.push({
+        server: `http://${host}:${port}`,
+        username: username ?? undefined,
+        password: password ?? undefined,
+        raw: trimmed,
+      });
+      return acc;
+    }, []);
 
     this.logger.log({
       message: `Loaded ${this.proxies.length} proxies for LinkedIn rotation`,

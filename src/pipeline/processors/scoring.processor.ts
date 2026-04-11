@@ -62,8 +62,7 @@ export class ScoringProcessor extends WorkerHost {
         }
       }
 
-      const sourceType = (lead as any).sourceType as string | undefined;
-      const isDiscovery = sourceType === 'discovery';
+      const isDiscovery = lead.sourceType === 'discovery';
 
       const discoveryMetadata = isDiscovery
         ? {
@@ -98,6 +97,16 @@ export class ScoringProcessor extends WorkerHost {
         },
       });
 
+      // Intent leads with low AI confidence are not worth personalizing — skip
+      // them to avoid burning tokens on uncertain signals.
+      if (!isDiscovery && (intent.intentConfidence ?? 0) < 0.5) {
+        this.logger.log({
+          message: `Lead ${leadId} below intent confidence threshold (${intent.intentConfidence ?? 0}) — not personalizing`,
+          organizationId,
+        });
+        return;
+      }
+
       // Only personalize HOT/WARM leads — use the already-computed tier so that
       // discovery leads are gated by DISCOVERY_THRESHOLDS, not the intent >= 10 cutoff.
       if (output.meetsThreshold && output.scoring.tier !== LeadTier.COLD) {
@@ -109,7 +118,11 @@ export class ScoringProcessor extends WorkerHost {
         });
       }
     } catch (error) {
-      this.logger.error({ message: `Scoring processor error`, jobId: job.id, error: String(error) });
+      this.logger.error({
+        message: `Scoring processor error`,
+        jobId: job.id,
+        error: String(error),
+      });
       throw error;
     }
   }

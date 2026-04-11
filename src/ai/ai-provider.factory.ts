@@ -23,7 +23,8 @@ export class AIProviderFactory {
   }
 
   getClassificationProvider(orgModel?: string): IAIProvider {
-    const model = orgModel ?? this.config.openAiApiKey ? 'gpt-4o-mini' : 'claude-haiku-4-5-20251001';
+    const model =
+      (orgModel ?? this.config.openAiApiKey) ? 'gpt-4o-mini' : 'claude-haiku-4-5-20251001';
     return this.getProvider(model);
   }
 

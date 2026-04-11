@@ -26,7 +26,13 @@ export function scoreBudgetFactor(content?: string, budgetSignal?: string): Scor
   }
 
   if (NEGATIVE_BUDGET_SIGNALS.some((r) => r.test(text))) {
-    return { name: 'budget', weight: 1, score: -5, maxPossible: 10, reasoning: 'Negative budget signal detected' };
+    return {
+      name: 'budget',
+      weight: 1,
+      score: -5,
+      maxPossible: 10,
+      reasoning: 'Negative budget signal detected',
+    };
   }
 
   let score = 0;
@@ -42,6 +48,7 @@ export function scoreBudgetFactor(content?: string, budgetSignal?: string): Scor
     weight: 1,
     score,
     maxPossible: 10,
-    reasoning: score > 0 ? `Budget signals detected (score: ${score}/10)` : 'No budget signals found',
+    reasoning:
+      score > 0 ? `Budget signals detected (score: ${score}/10)` : 'No budget signals found',
   };
 }

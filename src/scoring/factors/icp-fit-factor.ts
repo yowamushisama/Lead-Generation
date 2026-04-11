@@ -28,7 +28,9 @@ export function scoreICPFitFactor(
   // Industry match (6 points)
   if (
     leadAttributes.industry &&
-    icpConfig.targetIndustries.some((i) => normalize(leadAttributes.industry).includes(i.toLowerCase()))
+    icpConfig.targetIndustries.some((i) =>
+      normalize(leadAttributes.industry).includes(i.toLowerCase()),
+    )
   ) {
     score += 6;
     matchedSignals.push(`industry: ${leadAttributes.industry}`);
@@ -37,7 +39,9 @@ export function scoreICPFitFactor(
   // Company stage match (4 points)
   if (
     leadAttributes.companyStage &&
-    icpConfig.targetStages.some((s) => normalize(leadAttributes.companyStage).includes(s.toLowerCase()))
+    icpConfig.targetStages.some((s) =>
+      normalize(leadAttributes.companyStage).includes(s.toLowerCase()),
+    )
   ) {
     score += 4;
     matchedSignals.push(`stage: ${leadAttributes.companyStage}`);
@@ -46,7 +50,9 @@ export function scoreICPFitFactor(
   // Location match (2 points)
   if (
     leadAttributes.location &&
-    icpConfig.targetLocations?.some((l) => normalize(leadAttributes.location).includes(l.toLowerCase()))
+    icpConfig.targetLocations?.some((l) =>
+      normalize(leadAttributes.location).includes(l.toLowerCase()),
+    )
   ) {
     score += 2;
     matchedSignals.push(`location: ${leadAttributes.location}`);
@@ -55,7 +61,9 @@ export function scoreICPFitFactor(
   // Excluded industry penalty
   if (
     leadAttributes.industry &&
-    icpConfig.excludedIndustries?.some((e) => normalize(leadAttributes.industry).includes(e.toLowerCase()))
+    icpConfig.excludedIndustries?.some((e) =>
+      normalize(leadAttributes.industry).includes(e.toLowerCase()),
+    )
   ) {
     score -= 10;
     matchedSignals.push(`EXCLUDED industry: ${leadAttributes.industry}`);

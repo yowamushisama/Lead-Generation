@@ -10,9 +10,7 @@ const stealthPluginModule = require('puppeteer-extra-plugin-stealth') as
   | StealthPluginFactory
   | { default?: StealthPluginFactory };
 const createStealthPlugin =
-  typeof stealthPluginModule === 'function'
-    ? stealthPluginModule
-    : stealthPluginModule.default;
+  typeof stealthPluginModule === 'function' ? stealthPluginModule : stealthPluginModule.default;
 
 if (typeof createStealthPlugin !== 'function') {
   throw new Error('Failed to load puppeteer-extra-plugin-stealth');
@@ -36,8 +34,7 @@ export class LinkedInStealthService {
   constructor(private readonly configService: ConfigService) {}
 
   async newPage(proxyConfig?: ProxyConfig): Promise<Page> {
-    const headless =
-      this.configService.get<string>('LINKEDIN_HEADLESS', 'true') !== 'false';
+    const headless = this.configService.get<string>('LINKEDIN_HEADLESS', 'true') !== 'false';
 
     // Always close and recreate the browser when a proxy is provided so that
     // proxy rotation actually takes effect (the proxy is bound at launch time).
@@ -46,12 +43,16 @@ export class LinkedInStealthService {
       this.browser = null;
     }
 
+    // --no-sandbox, --disable-setuid-sandbox, --disable-dev-shm-usage are
+    // Linux-specific flags. Including them on Windows is a fingerprinting signal.
+    const linuxArgs =
+      process.platform === 'linux'
+        ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        : [];
     const launchArgs = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
+      ...linuxArgs,
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
-      '--disable-dev-shm-usage',
     ];
 
     const launchOptions: Record<string, unknown> = { headless, args: launchArgs };
@@ -68,11 +69,13 @@ export class LinkedInStealthService {
 
     this.browser = await (chromium as any).launch(launchOptions);
 
+    const timezoneId = this.configService.get<string>('LINKEDIN_TIMEZONE') ?? 'America/New_York';
+
     const contextOptions: Record<string, unknown> = {
       viewport: this.randomViewport(),
       userAgent: this.randomUserAgent(),
       locale: 'en-US',
-      timezoneId: 'America/New_York',
+      timezoneId,
       extraHTTPHeaders: {
         'accept-language': 'en-US,en;q=0.9',
         'accept-encoding': 'gzip, deflate, br',

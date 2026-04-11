@@ -128,12 +128,10 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
-    const { data, error } = await this.supabaseService
-      .getAnonClient()
-      .auth.signInWithPassword({
-        email: dto.email,
-        password: dto.password,
-      });
+    const { data, error } = await this.supabaseService.getAnonClient().auth.signInWithPassword({
+      email: dto.email,
+      password: dto.password,
+    });
 
     if (error || !data.user) {
       throw new UnauthorizedException('Invalid email or password');

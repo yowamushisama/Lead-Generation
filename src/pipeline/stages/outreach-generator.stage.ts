@@ -35,15 +35,19 @@ export interface OutreachGeneratorOutput {
 }
 
 @Injectable()
-export class OutreachGeneratorStage
-  implements IPipelineStage<OutreachGeneratorInput, OutreachGeneratorOutput>
-{
+export class OutreachGeneratorStage implements IPipelineStage<
+  OutreachGeneratorInput,
+  OutreachGeneratorOutput
+> {
   readonly stageName = 'outreach-generator';
   private readonly logger = new Logger(OutreachGeneratorStage.name);
 
   constructor(private readonly aiFactory: AIProviderFactory) {}
 
-  async process(input: OutreachGeneratorInput, context: TenantContext): Promise<OutreachGeneratorOutput> {
+  async process(
+    input: OutreachGeneratorInput,
+    context: TenantContext,
+  ): Promise<OutreachGeneratorOutput> {
     const provider = this.aiFactory.getPersonalizationProvider(input.personalizationModel);
     const { personalization } = input;
     const channels = [personalization.recommendedChannel];
@@ -75,14 +79,11 @@ export class OutreachGeneratorStage
       const messageBody = result.content.trim();
 
       // Anti-pattern check
-      const antiPatternResult = await provider.complete(
-        `Message to check:\n\n"${messageBody}"`,
-        {
-          systemPrompt: ANTI_PATTERN_SYSTEM_PROMPT,
-          temperature: 0.1,
-          maxTokens: 256,
-        },
-      );
+      const antiPatternResult = await provider.complete(`Message to check:\n\n"${messageBody}"`, {
+        systemPrompt: ANTI_PATTERN_SYSTEM_PROMPT,
+        temperature: 0.1,
+        maxTokens: 256,
+      });
       totalTokens += antiPatternResult.tokensUsed;
 
       let spamCheck = { spamScore: 0, burntPatterns: [] as string[], isApproved: true };

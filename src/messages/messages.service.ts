@@ -28,7 +28,9 @@ export class MessagesService {
       where: { id: dto.leadId, organizationId: tenant.organizationId, optedOut: false },
     });
     if (!lead) {
-      throw new ForbiddenException(`Lead ${dto.leadId} not found in your organization or has opted out`);
+      throw new ForbiddenException(
+        `Lead ${dto.leadId} not found in your organization or has opted out`,
+      );
     }
 
     // Verify campaign belongs to this tenant if provided
@@ -52,15 +54,16 @@ export class MessagesService {
         subject: dto.subject,
         body: dto.body,
         spamScore: dto.spamScore ?? spamCheck.spamScore,
-        status: spamCheck.isApproved
-          ? MessageStatus.PENDING_APPROVAL
-          : MessageStatus.REJECTED,
+        status: spamCheck.isApproved ? MessageStatus.PENDING_APPROVAL : MessageStatus.REJECTED,
         generatedAt: new Date(),
       },
     });
   }
 
-  async findAll(tenant: TenantContext, filters: { leadId?: string; status?: string; campaignId?: string }) {
+  async findAll(
+    tenant: TenantContext,
+    filters: { leadId?: string; status?: string; campaignId?: string },
+  ) {
     return this.prisma.message.findMany({
       where: {
         organizationId: tenant.organizationId,
@@ -168,7 +171,9 @@ export class MessagesService {
         organizationId: tenant.organizationId,
         status: MessageStatus.PENDING_APPROVAL,
       },
-      include: { lead: { select: { name: true, role: true, company: true, score: true, tier: true } } },
+      include: {
+        lead: { select: { name: true, role: true, company: true, score: true, tier: true } },
+      },
       orderBy: [{ lead: { score: 'desc' } }, { generatedAt: 'desc' }],
     });
   }

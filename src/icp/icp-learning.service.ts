@@ -33,7 +33,8 @@ export class ICPLearningService {
       return;
     }
 
-    const weights: Record<string, number> = (profile.learnedWeights as Record<string, number>) ?? {};
+    const weights: Record<string, number> =
+      (profile.learnedWeights as Record<string, number>) ?? {};
     const total = convertedLeads.length;
 
     const roleCounts: Record<string, number> = {};
@@ -61,7 +62,7 @@ export class ICPLearningService {
       .slice(0, 5)
       .map(([role]) => role);
 
-    const config = (profile.config as unknown) as ICPConfig;
+    const config = profile.config as unknown as ICPConfig;
     const newRoles = topRoles.filter((r) => !config.targetRoles.includes(r));
     if (newRoles.length > 0) {
       this.logger.log({

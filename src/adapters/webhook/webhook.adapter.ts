@@ -59,9 +59,7 @@ export class WebhookAdapter extends BaseAdapter {
 
     const { signature, ...rest } = payload;
     const body = JSON.stringify(rest);
-    const expectedSignature = createHmac('sha256', secret)
-      .update(body)
-      .digest('hex');
+    const expectedSignature = createHmac('sha256', secret).update(body).digest('hex');
 
     return `sha256=${expectedSignature}` === signature;
   }
@@ -112,7 +110,8 @@ export class WebhookAdapter extends BaseAdapter {
       name,
       email: record['email'] ? String(record['email']) : undefined,
       company: record['company'] ? String(record['company']) : undefined,
-      role: record['role'] ?? record['title'] ? String(record['role'] ?? record['title']) : undefined,
+      role:
+        (record['role'] ?? record['title']) ? String(record['role'] ?? record['title']) : undefined,
       originalContent: JSON.stringify(data),
       metadata: {
         campaignId: config.campaignId,

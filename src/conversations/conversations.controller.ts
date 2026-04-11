@@ -24,10 +24,7 @@ export class ConversationsController {
 
   @Post()
   @ApiOperation({ summary: 'Start a new conversation thread' })
-  create(
-    @Tenant() tenant: TenantContext,
-    @Body() body: { leadId: string; channel: string },
-  ) {
+  create(@Tenant() tenant: TenantContext, @Body() body: { leadId: string; channel: string }) {
     return this.conversationsService.create(tenant, body.leadId, body.channel);
   }
 

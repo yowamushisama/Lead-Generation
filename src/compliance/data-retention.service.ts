@@ -62,7 +62,11 @@ export class DataRetentionService {
     return { deletedLeads, anonymizedLeads };
   }
 
-  async scheduleForDeletion(leadId: string, organizationId: string, daysUntilDeletion = 30): Promise<void> {
+  async scheduleForDeletion(
+    leadId: string,
+    organizationId: string,
+    daysUntilDeletion = 30,
+  ): Promise<void> {
     const expiresAt = new Date(Date.now() + daysUntilDeletion * 24 * 60 * 60 * 1000);
     await this.prisma.lead.update({
       where: { id: leadId },

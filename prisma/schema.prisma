@@ -67,7 +67,6 @@ model Lead {
   phone           String?
   website         String?
   originalContent String?
-  // Intent detection results
   intentType      String?
   intentUrgency   String?
   intentConfidence Float?
@@ -78,35 +77,28 @@ model Lead {
   desires         Json?
   budgetSignal    String?
   hiringIntent    Boolean   @default(false)
-  // ICP enrichment results
   icpAttributes   Json?
   companyStage    String?
   technicalLevel  String?
-  // Scoring
   score           Int       @default(0)
   scoreBreakdown  Json?
   tier            String    @default("COLD")
-  // Personalization
   personalizationData Json?
   personalContext Json?
   psychology      Json?
   positioning     Json?
   toneProfile     String?
   recommendedChannel String?
-  // Google Maps specific
   placeId         String?
   rating          Float?
   reviewCount     Int?
   businessType    String?
-  // Status
   status          String    @default("NEW")
-  // GDPR
   consentBasis    String    @default("LEGITIMATE_INTEREST")
   optedOut        Boolean   @default(false)
   optedOutAt      DateTime?
   dataExpiresAt   DateTime?
   contentHash     String?
-  // Relations
   campaign        Campaign?  @relation(fields: [campaignId], references: [id])
   campaignId      String?
   messages        Message[]
@@ -183,7 +175,6 @@ model Campaign {
   icpProfileId    String?
   icpProfile      ICPProfile? @relation(fields: [icpProfileId], references: [id])
   settings        Json?
-  // Legacy fields preserved for compatibility
   icpConfig       Json?
   keywords        Json?
   sources         Json?
@@ -191,13 +182,11 @@ model Campaign {
   targetIndustries Json?
   scoringWeights  Json?
   positioningPrompt String?
-  // Metrics
   leadsGenerated  Int       @default(0)
   messagesSent    Int       @default(0)
   replies         Int       @default(0)
   meetings        Int       @default(0)
   conversions     Int       @default(0)
-  // Relations
   leads           Lead[]
   messages        Message[]
   isActive        Boolean   @default(true)
@@ -213,9 +202,7 @@ model ICPProfile {
   organizationId  String
   name            String
   version         Int       @default(1)
-  // Unified config object (new) or legacy separate fields
   config          Json?
-  // Legacy individual fields
   targetRoles     Json?
   targetIndustries Json?
   targetStages    Json?
@@ -223,11 +210,9 @@ model ICPProfile {
   buyerSignals    Json?
   urgencySignals  Json?
   budgetSignals   Json?
-  // Learned from conversions
   learnedWeights  Json?
   conversionRate  Float?
   isActive        Boolean   @default(true)
-  // Relations
   campaigns       Campaign[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -242,7 +227,6 @@ model AnalyticsEvent {
   leadId          String?
   campaignId      String?
   data            Json?
-  // Legacy fields
   entityType      String?
   entityId        String?
   metadata        Json?

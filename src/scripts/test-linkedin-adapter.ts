@@ -133,8 +133,7 @@ function parseArgs(argv: string[]): CliOptions {
   }
 
   if (keywords.length === 0) {
-    const envKeywords = process.env.LINKEDIN_TEST_KEYWORDS
-      ?.split(',')
+    const envKeywords = process.env.LINKEDIN_TEST_KEYWORDS?.split(',')
       .map((keyword) => keyword.trim())
       .filter(Boolean);
 
@@ -165,7 +164,8 @@ function parsePositiveInt(value: string, flagName: string): number {
 }
 
 function printUsage(): void {
-  console.log(`
+  console.log(
+    `
 Usage:
   npm run linkedin:test-live -- --keyword "hiring SDR" --keyword "b2b saas" --max-results 5
 
@@ -185,7 +185,8 @@ Options:
   --campaign          Campaign id stored in lead metadata
   --json              Print each lead as JSON only
   --help, -h          Show this help text
-`.trim());
+`.trim(),
+  );
 }
 
 function printLead(lead: RawLeadInput, index: number, jsonOnly: boolean): void {
@@ -205,14 +206,19 @@ function printLead(lead: RawLeadInput, index: number, jsonOnly: boolean): void {
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
 
-  const [{ LinkedInAdapter }, { LinkedInProxyService }, { LinkedInSessionService }, { LinkedInStealthService }] =
-    await Promise.all([
-      import('../adapters/linkedin/linkedin.adapter'),
-      import('../adapters/linkedin/linkedin-proxy.service'),
-      import('../adapters/linkedin/linkedin-session.service'),
-      import('../adapters/linkedin/linkedin-stealth.service'),
-    ]);
-  const { LinkedInDiagnosticsService } = await import('../adapters/linkedin/linkedin-diagnostics.service');
+  const [
+    { LinkedInAdapter },
+    { LinkedInProxyService },
+    { LinkedInSessionService },
+    { LinkedInStealthService },
+  ] = await Promise.all([
+    import('../adapters/linkedin/linkedin.adapter'),
+    import('../adapters/linkedin/linkedin-proxy.service'),
+    import('../adapters/linkedin/linkedin-session.service'),
+    import('../adapters/linkedin/linkedin-stealth.service'),
+  ]);
+  const { LinkedInDiagnosticsService } =
+    await import('../adapters/linkedin/linkedin-diagnostics.service');
 
   @Module({
     imports: [

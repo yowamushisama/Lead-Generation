@@ -24,7 +24,10 @@ export class RegisterDto {
   @MaxLength(100)
   organizationName: string = '';
 
-  @ApiProperty({ example: 'acme-corp', description: 'URL-friendly identifier (lowercase, hyphens)' })
+  @ApiProperty({
+    example: 'acme-corp',
+    description: 'URL-friendly identifier (lowercase, hyphens)',
+  })
   @IsString()
   @MinLength(2)
   @MaxLength(50)

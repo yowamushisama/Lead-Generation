@@ -8,9 +8,7 @@ export const Tenant = createParamDecorator(
   },
 );
 
-export const TenantId = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): string => {
-    const request = ctx.switchToHttp().getRequest<{ tenantContext: TenantContext }>();
-    return request.tenantContext?.organizationId;
-  },
-);
+export const TenantId = createParamDecorator((_data: unknown, ctx: ExecutionContext): string => {
+  const request = ctx.switchToHttp().getRequest<{ tenantContext: TenantContext }>();
+  return request.tenantContext?.organizationId;
+});

@@ -2,7 +2,13 @@ import { ScoringFactor } from '../../common/interfaces/scoring-factor.interface'
 
 export function scoreRecencyFactor(postedAt?: Date | string): ScoringFactor {
   if (!postedAt) {
-    return { name: 'recency', weight: 1, score: 0, maxPossible: 10, reasoning: 'No timestamp available' };
+    return {
+      name: 'recency',
+      weight: 1,
+      score: 0,
+      maxPossible: 10,
+      reasoning: 'No timestamp available',
+    };
   }
 
   const posted = new Date(postedAt);

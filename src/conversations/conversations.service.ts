@@ -71,7 +71,8 @@ export class ConversationsService {
 
   async getSuggestedReplies(tenant: TenantContext, conversationId: string) {
     const convo = await this.findOne(tenant, conversationId);
-    const messages = (convo.messages as Array<{ role: 'us' | 'them'; content: string; timestamp: string }>) ?? [];
+    const messages =
+      (convo.messages as Array<{ role: 'us' | 'them'; content: string; timestamp: string }>) ?? [];
 
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage || lastMessage.role !== 'them') {

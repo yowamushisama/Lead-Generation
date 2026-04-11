@@ -8,12 +8,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBearerAuth,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
@@ -36,9 +31,7 @@ export class OrganizationsController {
   @Roles('superadmin')
   @ApiOperation({ summary: 'Create a new organization (superadmin only)' })
   @ApiResponse({ status: 201, description: 'Organization created successfully' })
-  async create(
-    @Body() dto: CreateOrganizationDto,
-  ): Promise<ApiResponseDto<unknown>> {
+  async create(@Body() dto: CreateOrganizationDto): Promise<ApiResponseDto<unknown>> {
     const result = await this.organizationsService.create(dto);
     return ApiResponseDto.success(result, 'Organization created');
   }
@@ -46,9 +39,7 @@ export class OrganizationsController {
   @Get('me')
   @ApiOperation({ summary: 'Get current organization profile' })
   @ApiResponse({ status: 200, description: 'Organization retrieved' })
-  async getMyOrganization(
-    @Tenant() tenant: TenantContext,
-  ): Promise<ApiResponseDto<unknown>> {
+  async getMyOrganization(@Tenant() tenant: TenantContext): Promise<ApiResponseDto<unknown>> {
     const result = await this.organizationsService.findById(tenant.organizationId);
     return ApiResponseDto.success(result);
   }
@@ -58,9 +49,7 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Get organization by ID (superadmin only)' })
   @ApiResponse({ status: 200, description: 'Organization retrieved' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseDto<unknown>> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<ApiResponseDto<unknown>> {
     const result = await this.organizationsService.findById(id);
     return ApiResponseDto.success(result);
   }
@@ -91,9 +80,7 @@ export class OrganizationsController {
 
   @Get('me/stats')
   @ApiOperation({ summary: 'Get organization usage statistics' })
-  async getStats(
-    @Tenant() tenant: TenantContext,
-  ): Promise<ApiResponseDto<unknown>> {
+  async getStats(@Tenant() tenant: TenantContext): Promise<ApiResponseDto<unknown>> {
     const result = await this.organizationsService.getStats(tenant.organizationId);
     return ApiResponseDto.success(result);
   }

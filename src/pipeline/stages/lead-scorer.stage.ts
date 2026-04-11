@@ -56,9 +56,7 @@ export class LeadScorerStage implements IPipelineStage<LeadScorerInput, LeadScor
 
     // Discovery leads bypass intent-confidence threshold — they have no intent signals
     const meetsThreshold =
-      track === 'discovery'
-        ? true
-        : this.scoringEngine.meetsConfidenceThreshold(input.intent);
+      track === 'discovery' ? true : this.scoringEngine.meetsConfidenceThreshold(input.intent);
 
     this.logger.log({
       message: `Lead scored: ${scoring.score} (${scoring.tier}) [track: ${track}]`,

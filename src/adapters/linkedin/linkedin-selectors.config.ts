@@ -63,6 +63,9 @@ export interface LinkedInSelectors {
   /** Any one present means the session is still authenticated */
   sessionValid: string[];
 
+  /** Any one present means a CAPTCHA / challenge is blocking the page (soft-block detection) */
+  captchaDetection: string[];
+
   lastVerified: string;
   version: number;
 }
@@ -76,9 +79,9 @@ export const LINKEDIN_SELECTORS: LinkedInSelectors = {
 
   // ── Post containers ──────────────────────────────────────────────────────────
   postContainers: [
-    '[data-urn*="activity"]',   // feed posts in content search (primary)
-    '[data-urn*="ugcPost"]',    // user-generated content posts
-    '.occludable-update',        // older feed wrapper class
+    '[data-urn*="activity"]', // feed posts in content search (primary)
+    '[data-urn*="ugcPost"]', // user-generated content posts
+    '.occludable-update', // older feed wrapper class
   ],
 
   postContainerFallbackRequires: [
@@ -89,45 +92,51 @@ export const LINKEDIN_SELECTORS: LinkedInSelectors = {
 
   // ── Author name ──────────────────────────────────────────────────────────────
   authorName: [
-    '.update-components-actor__name a',    // current primary (2025)
-    '.update-components-actor__name',      // when link is separate
-    '.feed-shared-actor__name a',          // legacy feed card
-    '.entity-result__title-text a',        // people/entity search result
+    '.update-components-actor__name a', // current primary (2025)
+    '.update-components-actor__name', // when link is separate
+    '.feed-shared-actor__name a', // legacy feed card
+    '.entity-result__title-text a', // people/entity search result
   ],
 
   // ── Author link ──────────────────────────────────────────────────────────────
   authorLink: [
-    'a[href*="/in/"]',                          // any profile link in card
-    '.app-aware-link[href*="/in/"]',            // branded profile link
-    '.update-components-actor__meta-link',      // meta link below name
+    'a[href*="/in/"]', // any profile link in card
+    '.app-aware-link[href*="/in/"]', // branded profile link
+    '.update-components-actor__meta-link', // meta link below name
   ],
 
   // ── Content ──────────────────────────────────────────────────────────────────
   content: [
-    '.update-components-text',                   // current primary (2025)
-    '.attributed-text-segment-list__content',    // rich-text wrapper
-    '.break-words',                              // older wrapper
-    '.feed-shared-update-v2__description',       // legacy description block
+    '.update-components-text', // current primary (2025)
+    '.attributed-text-segment-list__content', // rich-text wrapper
+    '.break-words', // older wrapper
+    '.feed-shared-update-v2__description', // legacy description block
   ],
 
   // ── Headline ─────────────────────────────────────────────────────────────────
   headline: [
-    '.update-components-actor__description',     // current primary (2025)
-    '.feed-shared-actor__description',           // legacy feed card
-    '.entity-result__primary-subtitle',          // entity search result
-    '.subline-level-1',                          // older profile subtitle
+    '.update-components-actor__description', // current primary (2025)
+    '.feed-shared-actor__description', // legacy feed card
+    '.entity-result__primary-subtitle', // entity search result
+    '.subline-level-1', // older profile subtitle
   ],
 
   // ── Posted-at ────────────────────────────────────────────────────────────────
   postedAt: [
-    'time',                                        // standard <time> element
-    '.update-components-actor__sub-description',   // text timestamp (current)
-    '.feed-shared-actor__sub-description',         // legacy
+    'time', // standard <time> element
+    '.update-components-actor__sub-description', // text timestamp (current)
+    '.feed-shared-actor__sub-description', // legacy
   ],
 
   // ── Session validation ───────────────────────────────────────────────────────
-  sessionValid: [
-    '.global-nav__me',
-    '[data-test-id="nav-settings__dropdown-trigger"]',
+  sessionValid: ['.global-nav__me', '[data-test-id="nav-settings__dropdown-trigger"]'],
+
+  // ── CAPTCHA / challenge detection (soft-block — URL may not change) ──────────
+  captchaDetection: [
+    '#captcha-challenge',
+    '.challenge-dialog',
+    'iframe[src*="challenge"]',
+    '[data-test-id="challenge"]',
+    '[data-test-id="captcha"]',
   ],
 };

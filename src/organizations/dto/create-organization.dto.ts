@@ -50,7 +50,9 @@ export class CreateOrganizationDto {
   @MaxLength(500)
   uniqueValue?: string;
 
-  @ApiPropertyOptional({ example: 'Position as the fast, affordable alternative to enterprise solutions' })
+  @ApiPropertyOptional({
+    example: 'Position as the fast, affordable alternative to enterprise solutions',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

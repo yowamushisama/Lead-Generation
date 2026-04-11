@@ -40,14 +40,13 @@ export class ScoringEngineService {
    */
   compute(input: ScoringInput, track: ScoringTrack = 'intent'): ScoringResult {
     const factors =
-      track === 'discovery'
-        ? this.buildDiscoveryFactors(input)
-        : this.buildIntentFactors(input);
+      track === 'discovery' ? this.buildDiscoveryFactors(input) : this.buildIntentFactors(input);
 
     const totalScore = factors.reduce((sum, f) => sum + f.score, 0);
     const maxPossible = factors.reduce((sum, f) => sum + f.maxPossible, 0);
     const normalizedScore = maxPossible > 0 ? (totalScore / maxPossible) * 100 : 0;
-    const tier = track === 'discovery' ? getDiscoveryTier(totalScore) : getTierFromScore(totalScore);
+    const tier =
+      track === 'discovery' ? getDiscoveryTier(totalScore) : getTierFromScore(totalScore);
 
     const breakdown: ScoringBreakdown = {
       factors,

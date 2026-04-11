@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  OnModuleInit,
-  OnModuleDestroy,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -21,27 +16,40 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit(): Promise<void> {
-    try {
-      await this.$connect();
-      this.logger.log({
-        message: 'Prisma connected to database',
-        module: 'PrismaService',
-      });
+    const maxRetries = 5;
+    const retryDelayMs = 3000;
 
-      this.$on('error' as never, (event: { message: string; target: string }) => {
-        this.logger.error({
-          message: `Prisma error: ${event.message}`,
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.$connect();
+        this.logger.log({
+          message: 'Prisma connected to database',
           module: 'PrismaService',
-          target: event.target,
         });
-      });
-    } catch (error) {
-      this.logger.error({
-        message: 'Failed to connect to database',
-        module: 'PrismaService',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
+
+        this.$on('error' as never, (event: { message: string; target: string }) => {
+          this.logger.error({
+            message: `Prisma error: ${event.message}`,
+            module: 'PrismaService',
+            target: event.target,
+          });
+        });
+        return;
+      } catch (error) {
+        this.logger.warn({
+          message: `Database connection attempt ${attempt}/${maxRetries} failed — ${error instanceof Error ? error.message : String(error)}`,
+          module: 'PrismaService',
+        });
+        if (attempt < maxRetries) {
+          await new Promise((res) => setTimeout(res, retryDelayMs));
+        } else {
+          this.logger.error({
+            message: 'All database connection attempts failed',
+            module: 'PrismaService',
+          });
+          throw error;
+        }
+      }
     }
   }
 

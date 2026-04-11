@@ -23,7 +23,10 @@ import { RedisService } from '../database/redis.service';
 import { LinkedInStealthService } from '../adapters/linkedin/linkedin-stealth.service';
 import { LinkedInProxyService } from '../adapters/linkedin/linkedin-proxy.service';
 import { LinkedInSessionService } from '../adapters/linkedin/linkedin-session.service';
-import { LinkedInDiagnosticsService, DomAuditResult } from '../adapters/linkedin/linkedin-diagnostics.service';
+import {
+  LinkedInDiagnosticsService,
+  DomAuditResult,
+} from '../adapters/linkedin/linkedin-diagnostics.service';
 import { LINKEDIN_SELECTORS } from '../adapters/linkedin/linkedin-selectors.config';
 import type { Page } from 'playwright';
 
@@ -72,7 +75,7 @@ function parseArgs(argv: string[]): CliOptions {
       keyword = argv[++i];
     } else if (arg.startsWith('--keyword=')) {
       keyword = arg.slice('--keyword='.length);
-    } else if ((arg === '--max-cards') && argv[i + 1]) {
+    } else if (arg === '--max-cards' && argv[i + 1]) {
       maxCards = Math.max(1, parseInt(argv[++i], 10) || 5);
     } else if (arg.startsWith('--max-cards=')) {
       maxCards = Math.max(1, parseInt(arg.slice('--max-cards='.length), 10) || 5);
@@ -99,7 +102,8 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function printUsage(): void {
-  console.log(`
+  console.log(
+    `
 Usage:
   npm run linkedin:dump-dom -- --keyword "hiring SDR"
   npm run linkedin:dump-dom -- --keyword "b2b saas" --max-cards 10 --output-dir ./dumps
@@ -112,7 +116,8 @@ Options:
 
 Required env vars: LINKEDIN_EMAIL, LINKEDIN_PASSWORD
 Optional env vars: LINKEDIN_HEADLESS=false
-`.trim());
+`.trim(),
+  );
 }
 
 // ── Report generation ────────────────────────────────────────────────────────
@@ -127,7 +132,10 @@ function renderAuditReport(
   const line = '─'.repeat(66);
   const pass = (n: number) => (n > 0 ? '✓' : '✗');
 
-  function renderGroup(label: string, group: { active: string | null; counts: Record<string, number> }): string {
+  function renderGroup(
+    label: string,
+    group: { active: string | null; counts: Record<string, number> },
+  ): string {
     const rows = Object.entries(group.counts)
       .map(([sel, n]) => {
         const marker = sel === group.active ? ' ← ACTIVE' : '';
@@ -271,8 +279,14 @@ async function main(): Promise<void> {
     process.exit(exitCode);
   };
 
-  process.on('SIGINT', () => { console.log('\nInterrupted.'); void shutdown(130); });
-  process.on('SIGTERM', () => { console.log('\nTerminated.'); void shutdown(143); });
+  process.on('SIGINT', () => {
+    console.log('\nInterrupted.');
+    void shutdown(130);
+  });
+  process.on('SIGTERM', () => {
+    console.log('\nTerminated.');
+    void shutdown(143);
+  });
 
   try {
     const email = configService.get<string>('LINKEDIN_EMAIL');
@@ -313,7 +327,8 @@ async function main(): Promise<void> {
       keyword: options.keyword,
     });
 
-    if (!audit) throw new Error('Selector audit returned null — page may not have loaded correctly');
+    if (!audit)
+      throw new Error('Selector audit returned null — page may not have loaded correctly');
 
     // ── Capture card HTMLs ────────────────────────────────────────────────
     console.log(`Capturing first ${options.maxCards} card HTML snippets...`);
@@ -323,7 +338,9 @@ async function main(): Promise<void> {
         for (const css of sel.postContainers) {
           const cards = document.querySelectorAll(css);
           if (cards.length > 0) {
-            Array.from(cards).slice(0, max).forEach((c) => results.push(c.outerHTML));
+            Array.from(cards)
+              .slice(0, max)
+              .forEach((c) => results.push(c.outerHTML));
             break;
           }
         }
@@ -343,11 +360,15 @@ async function main(): Promise<void> {
     const slug = options.keyword.replace(/[^a-z0-9]+/gi, '-').slice(0, 40);
     const base = path.join(options.outputDir, `${timestamp}_${slug}`);
 
-    const report = renderAuditReport(audit, options.keyword, cardHtmls, timestamp, options.outputDir);
+    const report = renderAuditReport(
+      audit,
+      options.keyword,
+      cardHtmls,
+      timestamp,
+      options.outputDir,
+    );
 
-    const cardsHtml = cardHtmls
-      .map((html, i) => `<!-- card ${i + 1} -->\n${html}`)
-      .join('\n\n');
+    const cardsHtml = cardHtmls.map((html, i) => `<!-- card ${i + 1} -->\n${html}`).join('\n\n');
 
     fs.writeFileSync(`${base}_report.txt`, report, 'utf8');
     fs.writeFileSync(`${base}_cards.html`, cardsHtml, 'utf8');

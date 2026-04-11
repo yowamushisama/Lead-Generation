@@ -44,9 +44,7 @@ export class AppLogger implements LoggerService {
 
   log(message: LogPayload, context?: string): void {
     const ctx = context ?? this.context;
-    process.stdout.write(
-      `[LOG] ${formatLogEntry(message, ctx)}\n`,
-    );
+    process.stdout.write(`[LOG] ${formatLogEntry(message, ctx)}\n`);
   }
 
   error(message: LogPayload, trace?: string, context?: string): void {

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
-import { IAIProvider, AICompletionOptions, AICompletionResult } from '../../common/interfaces/ai-provider.interface';
+import {
+  IAIProvider,
+  AICompletionOptions,
+  AICompletionResult,
+} from '../../common/interfaces/ai-provider.interface';
 import { TenantContext } from '../../common/interfaces/tenant-context.interface';
 import { IntentResult } from '../../common/types/intent.types';
 import { AppConfigService } from '../../config/config.service';
@@ -66,7 +70,10 @@ Respond ONLY with valid JSON.`;
     try {
       return JSON.parse(result.content) as IntentResult;
     } catch {
-      this.logger.warn({ message: 'Failed to parse intent JSON', organizationId: context.organizationId });
+      this.logger.warn({
+        message: 'Failed to parse intent JSON',
+        organizationId: context.organizationId,
+      });
       return {
         intentType: 'UNKNOWN',
         intentUrgency: 'NONE' as never,
