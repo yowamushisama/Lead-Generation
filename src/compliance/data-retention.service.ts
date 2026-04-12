@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { LeadRepository } from '../database/repositories/lead.repository';
 
 @Injectable()
 export class DataRetentionService {
   private readonly logger = new Logger(DataRetentionService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly leadRepository: LeadRepository) {}
 
   /**
    * Purge leads whose data retention period has expired.
@@ -15,7 +15,7 @@ export class DataRetentionService {
     const now = new Date();
 
     // Delete leads past their expiry (hard delete — they opted out or retention expired)
-    const expiredLeads = await this.prisma.lead.findMany({
+    const expiredLeads = await this.leadRepository.findMany({
       where: { dataExpiresAt: { lte: now } },
       select: { id: true, organizationId: true },
     });
@@ -26,9 +26,9 @@ export class DataRetentionService {
     for (const lead of expiredLeads) {
       try {
         // Soft anonymize if they converted (keep analytics, remove PII)
-        const fullLead = await this.prisma.lead.findUnique({ where: { id: lead.id } });
+        const fullLead = await this.leadRepository.findUnique({ where: { id: lead.id } });
         if (fullLead?.status === 'CONVERTED') {
-          await this.prisma.lead.update({
+          await this.leadRepository.update({
             where: { id: lead.id },
             data: {
               name: '[Anonymized]',
@@ -42,7 +42,7 @@ export class DataRetentionService {
           });
           anonymizedLeads++;
         } else {
-          await this.prisma.lead.delete({ where: { id: lead.id } });
+          await this.leadRepository.delete({ where: { id: lead.id } });
           deletedLeads++;
         }
       } catch (error) {
@@ -68,7 +68,7 @@ export class DataRetentionService {
     daysUntilDeletion = 30,
   ): Promise<void> {
     const expiresAt = new Date(Date.now() + daysUntilDeletion * 24 * 60 * 60 * 1000);
-    await this.prisma.lead.update({
+    await this.leadRepository.update({
       where: { id: leadId },
       data: { dataExpiresAt: expiresAt },
     });

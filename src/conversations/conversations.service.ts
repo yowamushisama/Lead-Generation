@@ -1,6 +1,8 @@
 import { TenantMode } from '../common/enums/tenant-mode.enum';
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { ConversationRepository } from '../database/repositories/conversation.repository';
+import { LeadRepository } from '../database/repositories/lead.repository';
+import { OrganizationRepository } from '../database/repositories/organization.repository';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { ConversationAssistantStage } from '../pipeline/stages/conversation-assistant.stage';
 import { ObjectionHandlerService } from './objection-handler.service';
@@ -29,13 +31,15 @@ export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly conversationRepository: ConversationRepository,
+    private readonly leadRepository: LeadRepository,
+    private readonly organizationRepository: OrganizationRepository,
     private readonly conversationAssistant: ConversationAssistantStage,
     private readonly objectionHandler: ObjectionHandlerService,
   ) {}
 
   async findAll(tenant: TenantContext, filters: { leadId?: string; status?: string }): Promise<ConversationResponseDto[]> {
-    const rows = await this.prisma.conversation.findMany({
+    const rows = await this.conversationRepository.findMany({
       where: {
         organizationId: tenant.organizationId,
         leadId: filters.leadId,
@@ -46,11 +50,11 @@ export class ConversationsService {
       },
       orderBy: { lastMessageAt: 'desc' },
     });
-    return rows.map((r) => this.toDto(r, r.lead));
+    return rows.map((r: any) => this.toDto(r, r.lead));
   }
 
   async findOne(tenant: TenantContext, id: string): Promise<ConversationResponseDto> {
-    const convo = await this.prisma.conversation.findFirst({
+    const convo = await this.conversationRepository.findFirst({
       where: { id, organizationId: tenant.organizationId },
       include: { lead: true },
     });
@@ -64,7 +68,7 @@ export class ConversationsService {
     content: string,
     fromUs: boolean,
   ): Promise<ConversationResponseDto> {
-    const convo = await this.prisma.conversation.findFirst({
+    const convo = await this.conversationRepository.findFirst({
       where: { id: conversationId, organizationId: tenant.organizationId },
     });
     if (!convo) throw new NotFoundException(`Conversation ${conversationId} not found`);
@@ -72,7 +76,7 @@ export class ConversationsService {
     const messages = fromJsonArray<StoredMessage>(convo.messages);
     messages.push({ role: fromUs ? 'us' : 'them', content, timestamp: new Date().toISOString() });
 
-    const updated = await this.prisma.conversation.update({
+    const updated = await this.conversationRepository.update({
       where: { id: conversationId },
       data: {
         messages: messages as never,
@@ -82,7 +86,7 @@ export class ConversationsService {
     });
 
     if (!fromUs) {
-      await this.prisma.lead.update({
+      await this.leadRepository.update({
         where: { id: convo.leadId },
         data: { status: LeadStatus.REPLIED },
       });
@@ -95,7 +99,7 @@ export class ConversationsService {
     tenant: TenantContext,
     conversationId: string,
   ): Promise<ReplySuggestionsResponseDto> {
-    const convo = await this.prisma.conversation.findFirst({
+    const convo = await this.conversationRepository.findFirst({
       where: { id: conversationId, organizationId: tenant.organizationId },
       include: { lead: true },
     });
@@ -116,7 +120,7 @@ export class ConversationsService {
     }
 
     const objectionResponse = this.objectionHandler.detect(lastMessage.content);
-    const org = await this.prisma.organization.findUnique({ where: { id: tenant.organizationId } });
+    const org = await this.organizationRepository.findUnique({ where: { id: tenant.organizationId } });
     const lead = convo.lead as { role?: string; company?: string; painPoints?: string[] };
 
     const aiOutput = await this.conversationAssistant.process(
@@ -151,12 +155,12 @@ export class ConversationsService {
   }
 
   async create(tenant: TenantContext, leadId: string, channel: string): Promise<ConversationResponseDto> {
-    const lead = await this.prisma.lead.findFirst({
+    const lead = await this.leadRepository.findFirst({
       where: { id: leadId, organizationId: tenant.organizationId },
     });
     if (!lead) throw new NotFoundException(`Lead ${leadId} not found`);
 
-    const convo = await this.prisma.conversation.create({
+    const convo = await this.conversationRepository.create({
       data: {
         organizationId: tenant.organizationId,
         leadId,

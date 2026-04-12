@@ -5,7 +5,10 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { CampaignRepository } from '../database/repositories/campaign.repository';
+import { LeadRepository } from '../database/repositories/lead.repository';
+import { MessageRepository } from '../database/repositories/message.repository';
+import { PrismaTransactionService } from '../database/repositories/prisma-transaction.service';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ApproveMessageDto } from './dto/approve-message.dto';
@@ -18,13 +21,16 @@ export class MessagesService {
   private readonly logger = new Logger(MessagesService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly leadRepository: LeadRepository,
+    private readonly campaignRepository: CampaignRepository,
+    private readonly messageRepository: MessageRepository,
+    private readonly transaction: PrismaTransactionService,
     private readonly antiSpam: AntiSpamService,
   ) {}
 
   async create(tenant: TenantContext, dto: CreateMessageDto) {
     // Verify the lead belongs to this tenant and has not opted out
-    const lead = await this.prisma.lead.findFirst({
+    const lead = await this.leadRepository.findFirst({
       where: { id: dto.leadId, organizationId: tenant.organizationId, optedOut: false },
     });
     if (!lead) {
@@ -35,7 +41,7 @@ export class MessagesService {
 
     // Verify campaign belongs to this tenant if provided
     if (dto.campaignId) {
-      const campaign = await this.prisma.campaign.findFirst({
+      const campaign = await this.campaignRepository.findFirst({
         where: { id: dto.campaignId, organizationId: tenant.organizationId },
       });
       if (!campaign) {
@@ -45,7 +51,7 @@ export class MessagesService {
 
     const spamCheck = this.antiSpam.check(dto.body);
 
-    return this.prisma.message.create({
+    return this.messageRepository.create({
       data: {
         organizationId: tenant.organizationId,
         leadId: dto.leadId,
@@ -64,7 +70,7 @@ export class MessagesService {
     tenant: TenantContext,
     filters: { leadId?: string; status?: string; campaignId?: string },
   ) {
-    return this.prisma.message.findMany({
+    return this.messageRepository.findMany({
       where: {
         organizationId: tenant.organizationId,
         leadId: filters.leadId,
@@ -77,7 +83,7 @@ export class MessagesService {
   }
 
   async findOne(tenant: TenantContext, id: string) {
-    const message = await this.prisma.message.findFirst({
+    const message = await this.messageRepository.findFirst({
       where: { id, organizationId: tenant.organizationId },
     });
     if (!message) throw new NotFoundException(`Message ${id} not found`);
@@ -100,8 +106,8 @@ export class MessagesService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.message.update({
+    return this.transaction.run(async (tx) => {
+      const updated = await this.messageRepository.update({
         where: { id },
         data: {
           body,
@@ -111,13 +117,13 @@ export class MessagesService {
           approvedBy: tenant.userId,
           spamScore: spamCheck.spamScore,
         },
-      });
+      }, tx);
 
       // Scope lead update by both id and organizationId
-      await tx.lead.updateMany({
+      await this.leadRepository.updateMany({
         where: { id: message.leadId, organizationId: tenant.organizationId },
         data: { status: LeadStatus.MESSAGE_APPROVED },
-      });
+      }, tx);
 
       this.logger.log({
         message: `Message ${id} approved`,
@@ -133,7 +139,7 @@ export class MessagesService {
     // findOne already enforces tenant scope
     await this.findOne(tenant, id);
 
-    return this.prisma.message.update({
+    return this.messageRepository.update({
       where: { id },
       data: {
         status: MessageStatus.REJECTED,
@@ -149,24 +155,24 @@ export class MessagesService {
       throw new BadRequestException('Message must be approved before marking as sent');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.message.update({
+    return this.transaction.run(async (tx) => {
+      const updated = await this.messageRepository.update({
         where: { id },
         data: { status: MessageStatus.SENT, sentAt: new Date() },
-      });
+      }, tx);
 
       // Scope lead update by both id and organizationId
-      await tx.lead.updateMany({
+      await this.leadRepository.updateMany({
         where: { id: message.leadId, organizationId: tenant.organizationId },
         data: { status: LeadStatus.OUTREACH_SENT },
-      });
+      }, tx);
 
       return updated;
     });
   }
 
   async getPendingApproval(tenant: TenantContext) {
-    return this.prisma.message.findMany({
+    return this.messageRepository.findMany({
       where: {
         organizationId: tenant.organizationId,
         status: MessageStatus.PENDING_APPROVAL,

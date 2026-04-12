@@ -1,8 +1,9 @@
 import { TenantMode } from '../common/enums/tenant-mode.enum';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { PrismaService } from '../database/prisma.service';
+import { CampaignRepository } from '../database/repositories/campaign.repository';
 import { AdapterRegistryService } from '../adapters/adapter-registry.service';
+import { OrganizationRepository } from '../database/repositories/organization.repository';
 import { OrchestratorService } from '../pipeline/orchestrator.service';
 
 @Injectable()
@@ -10,7 +11,8 @@ export class DailyScrapeJob {
   private readonly logger = new Logger(DailyScrapeJob.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly organizationRepository: OrganizationRepository,
+    private readonly campaignRepository: CampaignRepository,
     private readonly adapterRegistry: AdapterRegistryService,
     private readonly orchestrator: OrchestratorService,
   ) {}
@@ -19,7 +21,7 @@ export class DailyScrapeJob {
   async run(): Promise<void> {
     this.logger.log({ message: 'Daily scrape job started' });
 
-    const activeOrgs = await this.prisma.organization.findMany({
+    const activeOrgs = await this.organizationRepository.findMany({
       where: { users: { some: {} } },
       select: { id: true },
     });
@@ -27,7 +29,7 @@ export class DailyScrapeJob {
     let totalEnqueued = 0;
 
     for (const org of activeOrgs) {
-      const campaigns = await this.prisma.campaign.findMany({
+      const campaigns = await this.campaignRepository.findMany({
         where: { organizationId: org.id, isActive: true, status: 'ACTIVE' },
         select: { id: true, keywords: true, targetLocations: true, targetIndustries: true },
       });

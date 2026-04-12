@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IPipelineStage } from '../../common/interfaces/pipeline-stage.interface';
 import { TenantContext } from '../../common/interfaces/tenant-context.interface';
-import { PrismaService } from '../../database/prisma.service';
+import { IcpProfileRepository } from '../../database/repositories/icp-profile.repository';
 
 export interface ICPRefinerInput {
   organizationId: string;
@@ -27,10 +27,10 @@ export class ICPRefinerStage implements IPipelineStage<ICPRefinerInput, ICPRefin
   readonly stageName = 'icp-refiner';
   private readonly logger = new Logger(ICPRefinerStage.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly icpProfileRepository: IcpProfileRepository) {}
 
   async process(input: ICPRefinerInput, context: TenantContext): Promise<ICPRefinerOutput> {
-    const profile = await this.prisma.iCPProfile.findFirst({
+    const profile = await this.icpProfileRepository.findFirst({
       where: { id: input.icpProfileId, organizationId: context.organizationId },
     });
 
@@ -68,7 +68,7 @@ export class ICPRefinerStage implements IPipelineStage<ICPRefinerInput, ICPRefin
     const conversionRate =
       total > 0 ? total / Math.max(total * 10, 1) : (profile.conversionRate ?? 0);
 
-    const updated = await this.prisma.iCPProfile.update({
+    const updated = await this.icpProfileRepository.update({
       where: { id: input.icpProfileId },
       data: {
         learnedWeights: newWeights,

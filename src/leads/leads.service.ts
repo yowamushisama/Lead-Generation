@@ -5,7 +5,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { LeadRepository } from '../database/repositories/lead.repository';
 import { DeduplicationService } from './deduplication.service';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -30,7 +30,7 @@ export class LeadsService {
   private readonly logger = new Logger(LeadsService.name);
 
   constructor(
-    private readonly prismaService: PrismaService,
+    private readonly leadRepository: LeadRepository,
     private readonly deduplicationService: DeduplicationService,
   ) {}
 
@@ -64,7 +64,7 @@ export class LeadsService {
       dataExpiresAt.getDate() + parseInt(process.env['DATA_RETENTION_DAYS'] ?? '90', 10),
     );
 
-    const lead = await this.prismaService.lead.create({
+    const lead = await this.leadRepository.create({
       data: {
         organizationId,
         externalId: dto.externalId,
@@ -135,7 +135,7 @@ export class LeadsService {
     };
 
     const [leads, total] = await Promise.all([
-      this.prismaService.lead.findMany({
+      this.leadRepository.findMany({
         where,
         skip: pagination.skip,
         take: pagination.limit,
@@ -143,14 +143,14 @@ export class LeadsService {
           [pagination.sortBy ?? 'createdAt']: pagination.sortOrder ?? 'desc',
         },
       }),
-      this.prismaService.lead.count({ where }),
+      this.leadRepository.count({ where }),
     ]);
 
     return paginate(leads, total, pagination);
   }
 
   async findOne(organizationId: string, id: string): Promise<LeadDetailResponseDto> {
-    const lead = await this.prismaService.lead.findFirst({
+    const lead = await this.leadRepository.findFirst({
       where: { id, organizationId, optedOut: false },
       include: {
         messages: {
@@ -202,7 +202,7 @@ export class LeadsService {
       optedOutAt: lead.optedOutAt,
       dataExpiresAt: lead.dataExpiresAt,
       campaignId: lead.campaignId,
-      messages: lead.messages.map((m) => ({
+      messages: lead.messages.map((m: any) => ({
         id: m.id,
         channel: m.channel,
         subject: m.subject,
@@ -211,7 +211,7 @@ export class LeadsService {
         sentAt: m.sentAt,
         createdAt: m.createdAt,
       })),
-      conversations: lead.conversations.map((c) => ({
+      conversations: lead.conversations.map((c: any) => ({
         id: c.id,
         channel: c.channel,
         messageCount: c.messageCount,
@@ -224,7 +224,7 @@ export class LeadsService {
   }
 
   async update(organizationId: string, id: string, dto: UpdateLeadDto): Promise<Lead> {
-    const existing = await this.prismaService.lead.findFirst({
+    const existing = await this.leadRepository.findFirst({
       where: { id, organizationId },
     });
 
@@ -238,7 +238,7 @@ export class LeadsService {
 
     const tier = dto.score !== undefined ? getTierFromScore(dto.score) : undefined;
 
-    const updated = await this.prismaService.lead.update({
+    const updated = await this.leadRepository.update({
       where: { id },
       data: {
         ...(dto.status && { status: dto.status }),
@@ -266,7 +266,7 @@ export class LeadsService {
   }
 
   async remove(organizationId: string, id: string): Promise<void> {
-    const existing = await this.prismaService.lead.findFirst({
+    const existing = await this.leadRepository.findFirst({
       where: { id, organizationId },
     });
 
@@ -274,7 +274,7 @@ export class LeadsService {
       throw new NotFoundException(`Lead with ID '${id}' not found`);
     }
 
-    await this.prismaService.lead.delete({ where: { id } });
+    await this.leadRepository.delete({ where: { id } });
 
     this.logger.log({
       message: 'Lead deleted',
@@ -285,7 +285,7 @@ export class LeadsService {
   }
 
   async optOut(organizationId: string, id: string): Promise<Lead> {
-    const existing = await this.prismaService.lead.findFirst({
+    const existing = await this.leadRepository.findFirst({
       where: { id, organizationId },
     });
 
@@ -293,7 +293,7 @@ export class LeadsService {
       throw new NotFoundException(`Lead with ID '${id}' not found`);
     }
 
-    const updated = await this.prismaService.lead.update({
+    const updated = await this.leadRepository.update({
       where: { id },
       data: {
         optedOut: true,
@@ -347,23 +347,11 @@ export class LeadsService {
 
   async getStats(organizationId: string): Promise<LeadStats> {
     const [total, byTier, byStatus, bySource, avgScore] = await Promise.all([
-      this.prismaService.lead.count({ where: { organizationId } }),
-      this.prismaService.lead.groupBy({
-        by: ['tier'],
-        where: { organizationId },
-        _count: { id: true },
-      }),
-      this.prismaService.lead.groupBy({
-        by: ['status'],
-        where: { organizationId },
-        _count: { id: true },
-      }),
-      this.prismaService.lead.groupBy({
-        by: ['source'],
-        where: { organizationId },
-        _count: { id: true },
-      }),
-      this.prismaService.lead.aggregate({
+      this.leadRepository.count({ where: { organizationId } }),
+      this.leadRepository.countByTier({ organizationId }),
+      this.leadRepository.countByStatus({ organizationId }),
+      this.leadRepository.countBySource({ organizationId }),
+      this.leadRepository.aggregate({
         where: { organizationId },
         _avg: { score: true },
       }),
@@ -371,7 +359,7 @@ export class LeadsService {
 
     return {
       total,
-      averageScore: avgScore._avg.score ?? 0,
+      averageScore: avgScore._avg?.score ?? 0,
       byTier: Object.fromEntries(byTier.map((r) => [r.tier, r._count.id])),
       byStatus: Object.fromEntries(byStatus.map((r) => [r.status, r._count.id])),
       bySource: Object.fromEntries(bySource.map((r) => [r.source, r._count.id])),

@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../database/prisma.service';
+import { CampaignRepository } from '../database/repositories/campaign.repository';
+import { LeadRepository } from '../database/repositories/lead.repository';
+import { MessageRepository } from '../database/repositories/message.repository';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { CampaignFilterDto } from './dto/campaign-filter.dto';
@@ -27,10 +29,14 @@ export interface CampaignWithMetrics {
 export class CampaignsService {
   private readonly logger = new Logger(CampaignsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly campaignRepository: CampaignRepository,
+    private readonly leadRepository: LeadRepository,
+    private readonly messageRepository: MessageRepository,
+  ) {}
 
   async create(tenant: TenantContext, dto: CreateCampaignDto): Promise<CampaignWithMetrics> {
-    const campaign = await this.prisma.campaign.create({
+    const campaign = await this.campaignRepository.create({
       data: {
         organizationId: tenant.organizationId,
         name: dto.name,
@@ -52,7 +58,7 @@ export class CampaignsService {
   }
 
   async findAll(tenant: TenantContext, filters: CampaignFilterDto): Promise<CampaignWithMetrics[]> {
-    const campaigns = await this.prisma.campaign.findMany({
+    const campaigns = await this.campaignRepository.findMany({
       where: {
         organizationId: tenant.organizationId,
         isActive: filters.isActive,
@@ -68,7 +74,7 @@ export class CampaignsService {
   }
 
   async findOne(tenant: TenantContext, id: string): Promise<CampaignWithMetrics> {
-    const campaign = await this.prisma.campaign.findFirst({
+    const campaign = await this.campaignRepository.findFirst({
       where: { id, organizationId: tenant.organizationId },
       include: {
         _count: { select: { leads: true, messages: true } },
@@ -88,13 +94,13 @@ export class CampaignsService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.icpProfileId !== undefined) data.icpProfileId = dto.icpProfileId;
 
-    await this.prisma.campaign.update({ where: { id }, data: data as never });
+    await this.campaignRepository.update({ where: { id }, data: data as never });
     return this.findOne(tenant, id);
   }
 
   async pause(tenant: TenantContext, id: string): Promise<CampaignWithMetrics> {
     await this.findOne(tenant, id);
-    await this.prisma.campaign.update({
+    await this.campaignRepository.update({
       where: { id },
       data: { status: 'PAUSED', isActive: false },
     });
@@ -103,7 +109,7 @@ export class CampaignsService {
 
   async resume(tenant: TenantContext, id: string): Promise<CampaignWithMetrics> {
     await this.findOne(tenant, id);
-    await this.prisma.campaign.update({
+    await this.campaignRepository.update({
       where: { id },
       data: { status: 'ACTIVE', isActive: true },
     });
@@ -114,23 +120,15 @@ export class CampaignsService {
     await this.findOne(tenant, id);
 
     const [leads, messages] = await Promise.all([
-      this.prisma.lead.groupBy({
-        by: ['status'],
-        where: { campaignId: id, organizationId: tenant.organizationId },
-        _count: true,
-      }),
-      this.prisma.message.groupBy({
-        by: ['status'],
-        where: { campaignId: id, organizationId: tenant.organizationId },
-        _count: true,
-      }),
+      this.leadRepository.countByStatus({ campaignId: id, organizationId: tenant.organizationId }),
+      this.messageRepository.countByStatus({ campaignId: id, organizationId: tenant.organizationId }),
     ]);
 
     const leadMap: Record<string, number> = {};
-    for (const l of leads) leadMap[l.status] = l._count;
+    for (const l of leads) leadMap[l.status] = l._count.id;
 
     const messageMap: Record<string, number> = {};
-    for (const m of messages) messageMap[m.status] = m._count;
+    for (const m of messages) messageMap[m.status] = m._count.id;
 
     const totalLeads = Object.values(leadMap).reduce((a, b) => a + b, 0);
     const sent = messageMap['SENT'] ?? 0;
@@ -173,21 +171,17 @@ export class CampaignsService {
     const campaignIds = campaigns.map((c) => c.id);
 
     // Single grouped query for replied + converted counts across all campaigns
-    const leadStats = await this.prisma.lead.groupBy({
-      by: ['campaignId', 'status'],
-      where: {
+    const leadStats = await this.leadRepository.countByCampaignAndStatus({
         organizationId,
         campaignId: { in: campaignIds },
         status: { in: ['REPLIED', 'CONVERTED'] },
-      },
-      _count: true,
     });
 
     const statsByCampaign: Record<string, Record<string, number>> = {};
     for (const s of leadStats) {
       if (!s.campaignId) continue;
       statsByCampaign[s.campaignId] ??= {};
-      statsByCampaign[s.campaignId][s.status] = s._count;
+      statsByCampaign[s.campaignId][s.status] = s._count.id;
     }
 
     return campaigns.map(({ _count, ...c }) => ({

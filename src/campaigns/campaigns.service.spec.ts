@@ -1,21 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
-import { PrismaService } from '../database/prisma.service';
+import { CampaignRepository } from '../database/repositories/campaign.repository';
+import { LeadRepository } from '../database/repositories/lead.repository';
+import { MessageRepository } from '../database/repositories/message.repository';
 
-const mockPrisma = {
-  campaign: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findFirst: jest.fn(),
-    update: jest.fn(),
-  },
-  lead: {
-    groupBy: jest.fn(),
-  },
-  message: {
-    groupBy: jest.fn(),
-  },
+const mockCampaignRepository = {
+  create: jest.fn(),
+  findMany: jest.fn(),
+  findFirst: jest.fn(),
+  update: jest.fn(),
+};
+
+const mockLeadRepository = {
+  countByStatus: jest.fn(),
+  countByCampaignAndStatus: jest.fn(),
+};
+
+const mockMessageRepository = {
+  countByStatus: jest.fn(),
 };
 
 const tenant = { organizationId: 'org-1', userId: 'user-1', role: 'admin' };
@@ -61,7 +64,9 @@ describe('CampaignsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CampaignsService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: CampaignRepository, useValue: mockCampaignRepository },
+        { provide: LeadRepository, useValue: mockLeadRepository },
+        { provide: MessageRepository, useValue: mockMessageRepository },
       ],
     }).compile();
 
@@ -71,10 +76,10 @@ describe('CampaignsService', () => {
   // ── helpers ────────────────────────────────────────────────────────────────
 
   function setupFindOneSuccess() {
-    mockPrisma.campaign.findFirst.mockResolvedValue(campaignRow);
-    mockPrisma.lead.groupBy.mockResolvedValue([
-      { campaignId: 'camp-1', status: 'REPLIED', _count: 2 },
-      { campaignId: 'camp-1', status: 'CONVERTED', _count: 1 },
+    mockCampaignRepository.findFirst.mockResolvedValue(campaignRow);
+    mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([
+      { campaignId: 'camp-1', status: 'REPLIED', _count: { id: 2 } },
+      { campaignId: 'camp-1', status: 'CONVERTED', _count: { id: 1 } },
     ]);
   }
 
@@ -82,7 +87,7 @@ describe('CampaignsService', () => {
 
   describe('create', () => {
     it('creates a campaign and returns it with metrics', async () => {
-      mockPrisma.campaign.create.mockResolvedValue({ ...campaignRow });
+      mockCampaignRepository.create.mockResolvedValue({ ...campaignRow });
       setupFindOneSuccess();
 
       const result = await service.create(tenant as any, { name: 'Q2' } as any);
@@ -97,10 +102,10 @@ describe('CampaignsService', () => {
 
   describe('findAll', () => {
     it('returns campaigns with live metrics', async () => {
-      mockPrisma.campaign.findMany.mockResolvedValue([campaignRow]);
-      mockPrisma.lead.groupBy.mockResolvedValue([
-        { campaignId: 'camp-1', status: 'REPLIED', _count: 2 },
-        { campaignId: 'camp-1', status: 'CONVERTED', _count: 1 },
+      mockCampaignRepository.findMany.mockResolvedValue([campaignRow]);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([
+        { campaignId: 'camp-1', status: 'REPLIED', _count: { id: 2 } },
+        { campaignId: 'camp-1', status: 'CONVERTED', _count: { id: 1 } },
       ]);
 
       const result = await service.findAll(tenant as any, {});
@@ -115,8 +120,8 @@ describe('CampaignsService', () => {
     });
 
     it('returns empty array when no campaigns exist', async () => {
-      mockPrisma.campaign.findMany.mockResolvedValue([]);
-      mockPrisma.lead.groupBy.mockResolvedValue([]);
+      mockCampaignRepository.findMany.mockResolvedValue([]);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
 
       const result = await service.findAll(tenant as any, {});
 
@@ -137,7 +142,7 @@ describe('CampaignsService', () => {
     });
 
     it('throws NotFoundException when campaign does not exist', async () => {
-      mockPrisma.campaign.findFirst.mockResolvedValue(null);
+      mockCampaignRepository.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne(tenant as any, 'ghost')).rejects.toThrow(NotFoundException);
     });
@@ -148,12 +153,12 @@ describe('CampaignsService', () => {
   describe('update', () => {
     it('updates name and returns refreshed campaign with metrics', async () => {
       setupFindOneSuccess();
-      mockPrisma.campaign.update.mockResolvedValue({ ...campaignRow, name: 'Renamed' });
+      mockCampaignRepository.update.mockResolvedValue({ ...campaignRow, name: 'Renamed' });
 
       const result = await service.update(tenant as any, 'camp-1', { name: 'Renamed' });
 
       expect(result.leadsGenerated).toBe(5);
-      expect(mockPrisma.campaign.update).toHaveBeenCalled();
+      expect(mockCampaignRepository.update).toHaveBeenCalled();
     });
   });
 
@@ -162,17 +167,17 @@ describe('CampaignsService', () => {
   describe('pause', () => {
     it('sets status PAUSED and returns updated campaign', async () => {
       const paused = { ...campaignRow, status: 'PAUSED', isActive: false };
-      mockPrisma.campaign.findFirst
+      mockCampaignRepository.findFirst
         .mockResolvedValueOnce(campaignRow)  // guard findOne check
         .mockResolvedValueOnce(paused);      // re-fetch after update
-      mockPrisma.campaign.update.mockResolvedValue(paused);
-      mockPrisma.lead.groupBy.mockResolvedValue([]);
+      mockCampaignRepository.update.mockResolvedValue(paused);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
 
       const result = await service.pause(tenant as any, 'camp-1');
 
       expect(result.status).toBe('PAUSED');
       expect(result.isActive).toBe(false);
-      expect(mockPrisma.campaign.update).toHaveBeenCalledWith(
+      expect(mockCampaignRepository.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'PAUSED', isActive: false } }),
       );
     });
@@ -183,11 +188,11 @@ describe('CampaignsService', () => {
   describe('resume', () => {
     it('sets status ACTIVE and returns updated campaign', async () => {
       const active = { ...campaignRow, status: 'ACTIVE', isActive: true };
-      mockPrisma.campaign.findFirst
+      mockCampaignRepository.findFirst
         .mockResolvedValueOnce(campaignRow)
         .mockResolvedValueOnce(active);
-      mockPrisma.campaign.update.mockResolvedValue(active);
-      mockPrisma.lead.groupBy.mockResolvedValue([]);
+      mockCampaignRepository.update.mockResolvedValue(active);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
 
       const result = await service.resume(tenant as any, 'camp-1');
 
@@ -201,15 +206,10 @@ describe('CampaignsService', () => {
   describe('getPerformance', () => {
     it('computes reply rate and conversion rate', async () => {
       setupFindOneSuccess();
-      mockPrisma.lead.groupBy
-        .mockResolvedValueOnce([{ status: 'REPLIED', _count: 5 }]) // performance leads (first call)
-        .mockResolvedValueOnce([]);                                  // attachMetrics leads (second findOne)
-      mockPrisma.message.groupBy.mockResolvedValue([{ status: 'SENT', _count: 20 }]);
-
-      // Override: getPerformance calls findOne first, then does two groupBy calls
-      mockPrisma.campaign.findFirst.mockResolvedValue(campaignRow);
-      mockPrisma.lead.groupBy.mockResolvedValue([{ status: 'REPLIED', _count: 5 }]);
-      mockPrisma.message.groupBy.mockResolvedValue([{ status: 'SENT', _count: 20 }]);
+      mockCampaignRepository.findFirst.mockResolvedValue(campaignRow);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
+      mockLeadRepository.countByStatus.mockResolvedValue([{ status: 'REPLIED', _count: { id: 5 } }]);
+      mockMessageRepository.countByStatus.mockResolvedValue([{ status: 'SENT', _count: { id: 20 } }]);
 
       const result = await service.getPerformance(tenant as any, 'camp-1');
 

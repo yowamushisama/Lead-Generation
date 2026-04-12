@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
+import { LeadRepository } from '../database/repositories/lead.repository';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { ICPConfig, ICPMatch } from '../common/types/icp.types';
 
@@ -18,10 +19,13 @@ export interface UpdateICPDto {
 export class ICPService {
   private readonly logger = new Logger(ICPService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly icpProfileRepository: IcpProfileRepository,
+    private readonly leadRepository: LeadRepository,
+  ) {}
 
   async create(tenant: TenantContext, dto: CreateICPDto) {
-    return this.prisma.iCPProfile.create({
+    return this.icpProfileRepository.create({
       data: {
         organizationId: tenant.organizationId,
         name: dto.name,
@@ -33,21 +37,21 @@ export class ICPService {
   }
 
   async findAll(tenant: TenantContext) {
-    return this.prisma.iCPProfile.findMany({
+    return this.icpProfileRepository.findMany({
       where: { organizationId: tenant.organizationId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findActive(organizationId: string) {
-    return this.prisma.iCPProfile.findFirst({
+    return this.icpProfileRepository.findFirst({
       where: { organizationId, isActive: true },
       orderBy: { version: 'desc' },
     });
   }
 
   async findOne(tenant: TenantContext, id: string) {
-    const profile = await this.prisma.iCPProfile.findFirst({
+    const profile = await this.icpProfileRepository.findFirst({
       where: { id, organizationId: tenant.organizationId },
     });
     if (!profile) throw new NotFoundException(`ICP profile ${id} not found`);
@@ -67,7 +71,7 @@ export class ICPService {
       updateData.version = { increment: 1 };
     }
 
-    return this.prisma.iCPProfile.update({ where: { id }, data: updateData as never });
+    return this.icpProfileRepository.update({ where: { id }, data: updateData as never });
   }
 
   async matchLead(
@@ -151,8 +155,8 @@ export class ICPService {
     const profile = await this.findOne(tenant, id);
 
     const [totalLeads, convertedLeads] = await Promise.all([
-      this.prisma.lead.count({ where: { organizationId: tenant.organizationId } }),
-      this.prisma.lead.count({
+      this.leadRepository.count({ where: { organizationId: tenant.organizationId } }),
+      this.leadRepository.count({
         where: { organizationId: tenant.organizationId, status: 'CONVERTED' },
       }),
     ]);

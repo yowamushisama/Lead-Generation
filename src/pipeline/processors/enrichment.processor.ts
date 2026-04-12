@@ -5,7 +5,8 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES, JOB_NAMES } from '../../common/constants/queue-names';
 import { PipelineJobData } from '../orchestrator.service';
 import { ICPEnricherStage } from '../stages/icp-enricher.stage';
-import { PrismaService } from '../../database/prisma.service';
+import { LeadRepository } from '../../database/repositories/lead.repository';
+import { OrganizationRepository } from '../../database/repositories/organization.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { OrchestratorService } from '../orchestrator.service';
 
@@ -15,7 +16,8 @@ export class EnrichmentProcessor extends WorkerHost {
 
   constructor(
     private readonly enricherStage: ICPEnricherStage,
-    private readonly prisma: PrismaService,
+    private readonly leadRepository: LeadRepository,
+    private readonly organizationRepository: OrganizationRepository,
     private readonly orchestrator: OrchestratorService,
   ) {
     super();
@@ -28,10 +30,10 @@ export class EnrichmentProcessor extends WorkerHost {
     this.logger.log({ message: `Processing enrichment job`, jobId: job.id, leadId });
 
     try {
-      const lead = await this.prisma.lead.findUnique({ where: { id: leadId } });
+      const lead = await this.leadRepository.findUnique({ where: { id: leadId } });
       if (!lead) throw new Error(`Lead ${leadId} not found`);
 
-      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      const org = await this.organizationRepository.findUnique({ where: { id: organizationId } });
       const serviceOffering = org?.serviceOffering ?? 'software development services';
 
       const profileContent = [
@@ -49,7 +51,7 @@ export class EnrichmentProcessor extends WorkerHost {
         context,
       );
 
-      await this.prisma.lead.update({
+      await this.leadRepository.update({
         where: { id: leadId },
         data: {
           role: output.attributes.role !== 'Unknown' ? output.attributes.role : lead.role,

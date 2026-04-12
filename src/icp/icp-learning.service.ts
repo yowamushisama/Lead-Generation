@@ -1,19 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
+import { LeadRepository } from '../database/repositories/lead.repository';
 import { ICPConfig } from '../common/types/icp.types';
 
 @Injectable()
 export class ICPLearningService {
   private readonly logger = new Logger(ICPLearningService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly icpProfileRepository: IcpProfileRepository,
+    private readonly leadRepository: LeadRepository,
+  ) {}
 
   /**
    * Analyze converted leads and update learned weights for the active ICP profile.
    * Called weekly by the icp-refinement cron job.
    */
   async refineFromConversions(organizationId: string): Promise<void> {
-    const profile = await this.prisma.iCPProfile.findFirst({
+    const profile = await this.icpProfileRepository.findFirst({
       where: { organizationId, isActive: true },
     });
 
@@ -22,7 +26,7 @@ export class ICPLearningService {
       return;
     }
 
-    const convertedLeads = await this.prisma.lead.findMany({
+    const convertedLeads = await this.leadRepository.findMany({
       where: { organizationId, status: 'CONVERTED' },
       select: { role: true, industry: true, icpAttributes: true, score: true },
       take: 200,
@@ -72,7 +76,7 @@ export class ICPLearningService {
       });
     }
 
-    await this.prisma.iCPProfile.update({
+    await this.icpProfileRepository.update({
       where: { id: profile.id },
       data: {
         learnedWeights: weights,

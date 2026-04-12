@@ -5,7 +5,9 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../../common/constants/queue-names';
 import { PipelineJobData } from '../orchestrator.service';
 import { LeadScorerStage } from '../stages/lead-scorer.stage';
-import { PrismaService } from '../../database/prisma.service';
+import { CampaignRepository } from '../../database/repositories/campaign.repository';
+import { IcpProfileRepository } from '../../database/repositories/icp-profile.repository';
+import { LeadRepository } from '../../database/repositories/lead.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { LeadTier } from '../../common/enums/lead-tier.enum';
 import { OrchestratorService } from '../orchestrator.service';
@@ -18,7 +20,9 @@ export class ScoringProcessor extends WorkerHost {
 
   constructor(
     private readonly scorerStage: LeadScorerStage,
-    private readonly prisma: PrismaService,
+    private readonly leadRepository: LeadRepository,
+    private readonly campaignRepository: CampaignRepository,
+    private readonly icpProfileRepository: IcpProfileRepository,
     private readonly orchestrator: OrchestratorService,
   ) {
     super();
@@ -31,7 +35,7 @@ export class ScoringProcessor extends WorkerHost {
     this.logger.log({ message: `Processing scoring job`, jobId: job.id, leadId });
 
     try {
-      const lead = await this.prisma.lead.findUnique({ where: { id: leadId } });
+      const lead = await this.leadRepository.findUnique({ where: { id: leadId } });
       if (!lead) throw new Error(`Lead ${leadId} not found`);
 
       // Reconstruct IntentResult from stored fields
@@ -53,9 +57,9 @@ export class ScoringProcessor extends WorkerHost {
       // Load active ICP config if campaign has one
       let icpConfig: ICPConfig | undefined;
       if (campaignId) {
-        const campaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
+        const campaign = await this.campaignRepository.findUnique({ where: { id: campaignId } });
         if (campaign?.icpProfileId) {
-          const icpProfile = await this.prisma.iCPProfile.findUnique({
+          const icpProfile = await this.icpProfileRepository.findUnique({
             where: { id: campaign.icpProfileId },
           });
           icpConfig = icpProfile?.config as ICPConfig | undefined;
@@ -87,7 +91,7 @@ export class ScoringProcessor extends WorkerHost {
         context,
       );
 
-      await this.prisma.lead.update({
+      await this.leadRepository.update({
         where: { id: leadId },
         data: {
           score: output.scoring.score,

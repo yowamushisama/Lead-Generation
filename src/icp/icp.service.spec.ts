@@ -1,18 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ICPService } from './icp.service';
-import { PrismaService } from '../database/prisma.service';
+import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
+import { LeadRepository } from '../database/repositories/lead.repository';
 
-const mockPrisma = {
-  iCPProfile: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findFirst: jest.fn(),
-    update: jest.fn(),
-  },
-  lead: {
-    count: jest.fn(),
-  },
+const mockIcpProfileRepository = {
+  create: jest.fn(),
+  findMany: jest.fn(),
+  findFirst: jest.fn(),
+  update: jest.fn(),
+};
+
+const mockLeadRepository = {
+  count: jest.fn(),
 };
 
 const tenant = { organizationId: 'org-1', userId: 'user-1', role: 'admin' };
@@ -56,7 +56,8 @@ describe('ICPService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ICPService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: IcpProfileRepository, useValue: mockIcpProfileRepository },
+        { provide: LeadRepository, useValue: mockLeadRepository },
       ],
     }).compile();
 
@@ -67,12 +68,12 @@ describe('ICPService', () => {
 
   describe('create', () => {
     it('creates and returns a new ICP profile', async () => {
-      mockPrisma.iCPProfile.create.mockResolvedValue(profileRow);
+      mockIcpProfileRepository.create.mockResolvedValue(profileRow);
 
       const result = await service.create(tenant as any, { name: 'B2B SaaS', config });
 
       expect(result.id).toBe('icp-1');
-      expect(mockPrisma.iCPProfile.create).toHaveBeenCalledWith(
+      expect(mockIcpProfileRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ organizationId: 'org-1', name: 'B2B SaaS' }),
         }),
@@ -84,7 +85,7 @@ describe('ICPService', () => {
 
   describe('findAll', () => {
     it('returns all profiles for the tenant', async () => {
-      mockPrisma.iCPProfile.findMany.mockResolvedValue([profileRow]);
+      mockIcpProfileRepository.findMany.mockResolvedValue([profileRow]);
 
       const result = await service.findAll(tenant as any);
 
@@ -97,7 +98,7 @@ describe('ICPService', () => {
 
   describe('findOne', () => {
     it('returns the profile when found', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(profileRow);
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
 
       const result = await service.findOne(tenant as any, 'icp-1');
 
@@ -105,7 +106,7 @@ describe('ICPService', () => {
     });
 
     it('throws NotFoundException when profile does not exist', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(null);
+      mockIcpProfileRepository.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne(tenant as any, 'ghost')).rejects.toThrow(NotFoundException);
     });
@@ -115,24 +116,24 @@ describe('ICPService', () => {
 
   describe('update', () => {
     it('updates name without bumping version', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(profileRow);
-      mockPrisma.iCPProfile.update.mockResolvedValue({ ...profileRow, name: 'Renamed' });
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
+      mockIcpProfileRepository.update.mockResolvedValue({ ...profileRow, name: 'Renamed' });
 
       const result = await service.update(tenant as any, 'icp-1', { name: 'Renamed' });
 
-      expect(mockPrisma.iCPProfile.update).toHaveBeenCalledWith(
+      expect(mockIcpProfileRepository.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ name: 'Renamed' }) }),
       );
       expect(result.name).toBe('Renamed');
     });
 
     it('bumps version when config is updated', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(profileRow);
-      mockPrisma.iCPProfile.update.mockResolvedValue({ ...profileRow, version: 2 });
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
+      mockIcpProfileRepository.update.mockResolvedValue({ ...profileRow, version: 2 });
 
       await service.update(tenant as any, 'icp-1', { config: { ...config, targetRoles: ['CMO'] } });
 
-      expect(mockPrisma.iCPProfile.update).toHaveBeenCalledWith(
+      expect(mockIcpProfileRepository.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ version: { increment: 1 } }),
         }),
@@ -144,8 +145,8 @@ describe('ICPService', () => {
 
   describe('getStats', () => {
     it('returns profile and conversion stats', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(profileRow);
-      mockPrisma.lead.count
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
+      mockLeadRepository.count
         .mockResolvedValueOnce(100)  // total
         .mockResolvedValueOnce(9);   // converted
 
@@ -157,8 +158,8 @@ describe('ICPService', () => {
     });
 
     it('returns 0 conversion rate when no leads exist', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(profileRow);
-      mockPrisma.lead.count.mockResolvedValue(0);
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
+      mockLeadRepository.count.mockResolvedValue(0);
 
       const result = await service.getStats(tenant as any, 'icp-1');
 
@@ -170,7 +171,7 @@ describe('ICPService', () => {
 
   describe('matchLead', () => {
     it('returns isMatch true when role and industry match ICP', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(profileRow);
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
 
       const match = await service.matchLead('org-1', { role: 'CEO', industry: 'SaaS', companyStage: 'Series-A' });
 
@@ -179,7 +180,7 @@ describe('ICPService', () => {
     });
 
     it('returns isMatch false when no active ICP profile exists', async () => {
-      mockPrisma.iCPProfile.findFirst.mockResolvedValue(null);
+      mockIcpProfileRepository.findFirst.mockResolvedValue(null);
 
       const match = await service.matchLead('org-1', { role: 'CEO' });
 

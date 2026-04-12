@@ -5,7 +5,9 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../../common/constants/queue-names';
 import { PipelineJobData } from '../orchestrator.service';
 import { OutreachGeneratorStage } from '../stages/outreach-generator.stage';
-import { PrismaService } from '../../database/prisma.service';
+import { LeadRepository } from '../../database/repositories/lead.repository';
+import { MessageRepository } from '../../database/repositories/message.repository';
+import { OrganizationRepository } from '../../database/repositories/organization.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { PersonalizationResult } from '../../common/types/personalization.types';
 import { MessageStatus } from '../../common/enums/message-status.enum';
@@ -16,7 +18,9 @@ export class OutreachProcessor extends WorkerHost {
 
   constructor(
     private readonly outreachStage: OutreachGeneratorStage,
-    private readonly prisma: PrismaService,
+    private readonly leadRepository: LeadRepository,
+    private readonly organizationRepository: OrganizationRepository,
+    private readonly messageRepository: MessageRepository,
   ) {
     super();
   }
@@ -29,8 +33,8 @@ export class OutreachProcessor extends WorkerHost {
 
     try {
       const [lead, org] = await Promise.all([
-        this.prisma.lead.findUnique({ where: { id: leadId } }),
-        this.prisma.organization.findUnique({ where: { id: organizationId } }),
+        this.leadRepository.findUnique({ where: { id: leadId } }),
+        this.organizationRepository.findUnique({ where: { id: organizationId } }),
       ]);
 
       if (!lead) throw new Error(`Lead ${leadId} not found`);
@@ -52,7 +56,7 @@ export class OutreachProcessor extends WorkerHost {
 
       // Persist each generated message
       for (const msg of output.messages) {
-        await this.prisma.message.create({
+        await this.messageRepository.create({
           data: {
             organizationId,
             leadId,
@@ -67,7 +71,7 @@ export class OutreachProcessor extends WorkerHost {
         });
       }
 
-      await this.prisma.lead.update({
+      await this.leadRepository.update({
         where: { id: leadId },
         data: { status: LeadStatus.MESSAGE_DRAFTED },
       });

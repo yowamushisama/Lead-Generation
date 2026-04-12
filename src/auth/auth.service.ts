@@ -6,8 +6,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../database/prisma.service';
+import { OrganizationRepository } from '../database/repositories/organization.repository';
+import { PrismaTransactionService } from '../database/repositories/prisma-transaction.service';
 import { SupabaseService } from '../database/supabase.service';
+import { UserRepository } from '../database/repositories/user.repository';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -34,13 +36,15 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private readonly prismaService: PrismaService,
+    private readonly userRepository: UserRepository,
+    private readonly organizationRepository: OrganizationRepository,
+    private readonly transaction: PrismaTransactionService,
     private readonly supabaseService: SupabaseService,
     private readonly jwtService: JwtService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
-    const existingUser = await this.prismaService.user.findUnique({
+    const existingUser = await this.userRepository.findUnique({
       where: { email: dto.email },
     });
 
@@ -48,7 +52,7 @@ export class AuthService {
       throw new ConflictException('Email already registered');
     }
 
-    const existingOrg = await this.prismaService.organization.findUnique({
+    const existingOrg = await this.organizationRepository.findUnique({
       where: { slug: dto.organizationSlug },
     });
 
@@ -61,20 +65,20 @@ export class AuthService {
       throw new ConflictException('Failed to create authentication account');
     }
 
-    let organization: Awaited<ReturnType<typeof this.prismaService.organization.create>>;
-    let user: Awaited<ReturnType<typeof this.prismaService.user.create>>;
+    let organization: Awaited<ReturnType<OrganizationRepository['create']>>;
+    let user: Awaited<ReturnType<UserRepository['create']>>;
 
     try {
       // Both Prisma writes in a single transaction so partial failures are impossible
-      const result = await this.prismaService.$transaction(async (tx) => {
-        const org = await tx.organization.create({
+      const result = await this.transaction.run(async (tx) => {
+        const org = await this.organizationRepository.create({
           data: {
             name: dto.organizationName,
             slug: dto.organizationSlug,
           },
-        });
+        }, tx);
 
-        const u = await tx.user.create({
+        const u = await this.userRepository.create({
           data: {
             email: dto.email,
             name: dto.name,
@@ -82,7 +86,7 @@ export class AuthService {
             supabaseUserId: supabaseUser.id,
             organizationId: org.id,
           },
-        });
+        }, tx);
 
         return { org, u };
       });
@@ -137,7 +141,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const user = await this.prismaService.user.findUnique({
+    const user = await this.userRepository.findUnique({
       where: { email: dto.email },
       include: { organization: true },
     });
@@ -181,7 +185,7 @@ export class AuthService {
     organization: { id: string; name: string; slug: string; tier: string };
     createdAt: Date;
   }> {
-    const user = await this.prismaService.user.findUnique({
+    const user = await this.userRepository.findUnique({
       where: { id: userId },
       include: { organization: true },
     });
@@ -207,7 +211,7 @@ export class AuthService {
   }
 
   async refreshToken(userId: string): Promise<{ accessToken: string }> {
-    const user = await this.prismaService.user.findUnique({
+    const user = await this.userRepository.findUnique({
       where: { id: userId },
     });
 
@@ -226,7 +230,7 @@ export class AuthService {
   }
 
   async validateUser(userId: string): Promise<boolean> {
-    const user = await this.prismaService.user.findUnique({
+    const user = await this.userRepository.findUnique({
       where: { id: userId },
     });
     return !!user;

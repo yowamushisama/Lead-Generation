@@ -2,21 +2,25 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
-import { PrismaService } from '../database/prisma.service';
+import { OrganizationRepository } from '../database/repositories/organization.repository';
+import { PrismaTransactionService } from '../database/repositories/prisma-transaction.service';
+import { UserRepository } from '../database/repositories/user.repository';
 import { SupabaseService } from '../database/supabase.service';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const mockPrisma = {
-  user: {
-    findUnique: jest.fn(),
-    create: jest.fn(),
-  },
-  organization: {
-    findUnique: jest.fn(),
-    create: jest.fn(),
-  },
-  $transaction: jest.fn(),
+const mockUserRepository = {
+  findUnique: jest.fn(),
+  create: jest.fn(),
+};
+
+const mockOrganizationRepository = {
+  findUnique: jest.fn(),
+  create: jest.fn(),
+};
+
+const mockTransaction = {
+  run: jest.fn(),
 };
 
 const mockSupabase = {
@@ -41,7 +45,9 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: UserRepository, useValue: mockUserRepository },
+        { provide: OrganizationRepository, useValue: mockOrganizationRepository },
+        { provide: PrismaTransactionService, useValue: mockTransaction },
         { provide: SupabaseService, useValue: mockSupabase },
         { provide: JwtService, useValue: mockJwt },
       ],
@@ -56,12 +62,12 @@ describe('AuthService', () => {
     const dto = { email: 'a@b.com', password: 'pw', name: 'Alice', organizationName: 'Acme', organizationSlug: 'acme' };
 
     it('creates org + user and returns auth result', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);        // no existing user
-      mockPrisma.organization.findUnique.mockResolvedValue(null); // no existing org
+      mockUserRepository.findUnique.mockResolvedValue(null);
+      mockOrganizationRepository.findUnique.mockResolvedValue(null);
       mockSupabase.createUser.mockResolvedValue({ id: 'supa-1' });
-      mockPrisma.$transaction.mockImplementation(async (fn: Function) =>
-        fn({ organization: { create: jest.fn().mockResolvedValue(orgRow) }, user: { create: jest.fn().mockResolvedValue(userRow) } }),
-      );
+      mockOrganizationRepository.create.mockResolvedValue(orgRow);
+      mockUserRepository.create.mockResolvedValue(userRow);
+      mockTransaction.run.mockImplementation(async (fn: Function) => fn({}));
 
       const result = await service.register(dto);
 
@@ -70,23 +76,23 @@ describe('AuthService', () => {
     });
 
     it('throws ConflictException when email already exists', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(userRow);
+      mockUserRepository.findUnique.mockResolvedValue(userRow);
 
       await expect(service.register(dto)).rejects.toThrow(ConflictException);
     });
 
     it('throws ConflictException when org slug already taken', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
-      mockPrisma.organization.findUnique.mockResolvedValue(orgRow);
+      mockUserRepository.findUnique.mockResolvedValue(null);
+      mockOrganizationRepository.findUnique.mockResolvedValue(orgRow);
 
       await expect(service.register(dto)).rejects.toThrow(ConflictException);
     });
 
     it('deletes Supabase user and re-throws on Prisma transaction failure', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
-      mockPrisma.organization.findUnique.mockResolvedValue(null);
+      mockUserRepository.findUnique.mockResolvedValue(null);
+      mockOrganizationRepository.findUnique.mockResolvedValue(null);
       mockSupabase.createUser.mockResolvedValue({ id: 'supa-1' });
-      mockPrisma.$transaction.mockRejectedValue(new Error('DB error'));
+      mockTransaction.run.mockRejectedValue(new Error('DB error'));
 
       await expect(service.register(dto)).rejects.toThrow('DB error');
       expect(mockSupabase.deleteUser).toHaveBeenCalledWith('supa-1');
@@ -102,7 +108,7 @@ describe('AuthService', () => {
       mockSupabase.getAnonClient.mockReturnValue({
         auth: { signInWithPassword: jest.fn().mockResolvedValue({ data: { user: { id: 'supa-1' } }, error: null }) },
       });
-      mockPrisma.user.findUnique.mockResolvedValue(userRow);
+      mockUserRepository.findUnique.mockResolvedValue(userRow);
 
       const result = await service.login(dto);
 
@@ -122,7 +128,7 @@ describe('AuthService', () => {
       mockSupabase.getAnonClient.mockReturnValue({
         auth: { signInWithPassword: jest.fn().mockResolvedValue({ data: { user: { id: 'supa-1' } }, error: null }) },
       });
-      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockUserRepository.findUnique.mockResolvedValue(null);
 
       await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
     });
@@ -132,7 +138,7 @@ describe('AuthService', () => {
 
   describe('getProfile', () => {
     it('returns user profile with organization', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(userRow);
+      mockUserRepository.findUnique.mockResolvedValue(userRow);
 
       const result = await service.getProfile('user-1');
 
@@ -141,7 +147,7 @@ describe('AuthService', () => {
     });
 
     it('throws NotFoundException when user does not exist', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockUserRepository.findUnique.mockResolvedValue(null);
 
       await expect(service.getProfile('ghost')).rejects.toThrow(NotFoundException);
     });
@@ -151,7 +157,7 @@ describe('AuthService', () => {
 
   describe('refreshToken', () => {
     it('issues new token for existing user', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(userRow);
+      mockUserRepository.findUnique.mockResolvedValue(userRow);
 
       const result = await service.refreshToken('user-1');
 
@@ -159,7 +165,7 @@ describe('AuthService', () => {
     });
 
     it('throws UnauthorizedException when user not found', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockUserRepository.findUnique.mockResolvedValue(null);
 
       await expect(service.refreshToken('ghost')).rejects.toThrow(UnauthorizedException);
     });

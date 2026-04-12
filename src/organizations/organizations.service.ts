@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { LeadRepository } from '../database/repositories/lead.repository';
+import { OrganizationRepository } from '../database/repositories/organization.repository';
+import { UsageRecordRepository } from '../database/repositories/usage-record.repository';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { OrganizationResponseDto, OrgStatsResponseDto } from './dto/organization-response.dto';
@@ -8,10 +10,14 @@ import { OrganizationResponseDto, OrgStatsResponseDto } from './dto/organization
 export class OrganizationsService {
   private readonly logger = new Logger(OrganizationsService.name);
 
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly organizationRepository: OrganizationRepository,
+    private readonly leadRepository: LeadRepository,
+    private readonly usageRecordRepository: UsageRecordRepository,
+  ) {}
 
   async create(dto: CreateOrganizationDto): Promise<OrganizationResponseDto> {
-    const existing = await this.prismaService.organization.findUnique({
+    const existing = await this.organizationRepository.findUnique({
       where: { slug: dto.slug },
     });
 
@@ -19,7 +25,7 @@ export class OrganizationsService {
       throw new ConflictException(`Organization slug '${dto.slug}' is already taken`);
     }
 
-    const organization = await this.prismaService.organization.create({
+    const organization = await this.organizationRepository.create({
       data: {
         name: dto.name,
         slug: dto.slug,
@@ -41,7 +47,7 @@ export class OrganizationsService {
   }
 
   async findById(id: string): Promise<OrganizationResponseDto> {
-    const organization = await this.prismaService.organization.findUnique({
+    const organization = await this.organizationRepository.findUnique({
       where: { id },
     });
 
@@ -53,7 +59,7 @@ export class OrganizationsService {
   }
 
   async findBySlug(slug: string): Promise<OrganizationResponseDto> {
-    const organization = await this.prismaService.organization.findUnique({
+    const organization = await this.organizationRepository.findUnique({
       where: { slug },
     });
 
@@ -68,7 +74,7 @@ export class OrganizationsService {
     await this.findById(id);
 
     if (dto.slug) {
-      const existing = await this.prismaService.organization.findFirst({
+      const existing = await this.organizationRepository.findFirst({
         where: { slug: dto.slug, NOT: { id } },
       });
 
@@ -77,7 +83,7 @@ export class OrganizationsService {
       }
     }
 
-    const updated = await this.prismaService.organization.update({
+    const updated = await this.organizationRepository.update({
       where: { id },
       data: {
         ...(dto.name && { name: dto.name }),
@@ -106,13 +112,13 @@ export class OrganizationsService {
     today.setHours(0, 0, 0, 0);
 
     const [organization, leadsToday, totalLeads, hotLeads, usageRecord] = await Promise.all([
-      this.prismaService.organization.findUnique({ where: { id: organizationId } }),
-      this.prismaService.lead.count({
+      this.organizationRepository.findUnique({ where: { id: organizationId } }),
+      this.leadRepository.count({
         where: { organizationId, createdAt: { gte: today } },
       }),
-      this.prismaService.lead.count({ where: { organizationId } }),
-      this.prismaService.lead.count({ where: { organizationId, tier: 'HOT' } }),
-      this.prismaService.usageRecord.findFirst({
+      this.leadRepository.count({ where: { organizationId } }),
+      this.leadRepository.count({ where: { organizationId, tier: 'HOT' } }),
+      this.usageRecordRepository.findFirst({
         where: { organizationId, date: today },
       }),
     ]);
@@ -147,7 +153,7 @@ export class OrganizationsService {
   }
 
   async exists(id: string): Promise<boolean> {
-    const count = await this.prismaService.organization.count({ where: { id } });
+    const count = await this.organizationRepository.count({ where: { id } });
     return count > 0;
   }
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { LeadRepository } from '../database/repositories/lead.repository';
 import { HashUtil } from '../common/utils/hash.util';
 
 interface DuplicateCheckInput {
@@ -24,14 +24,14 @@ export class DeduplicationService {
   private readonly logger = new Logger(DeduplicationService.name);
 
   constructor(
-    private readonly prismaService: PrismaService,
+    private readonly leadRepository: LeadRepository,
     private readonly hashUtil: HashUtil,
   ) {}
 
   async checkDuplicate(input: DuplicateCheckInput): Promise<boolean> {
     // Check by externalId + source + organizationId (strongest signal)
     if (input.externalId) {
-      const byExternalId = await this.prismaService.lead.findUnique({
+      const byExternalId = await this.leadRepository.findUnique({
         where: {
           externalId_source_organizationId: {
             externalId: input.externalId,
@@ -55,7 +55,7 @@ export class DeduplicationService {
 
     // Check by email + organizationId (strong signal)
     if (input.email) {
-      const byEmail = await this.prismaService.lead.findFirst({
+      const byEmail = await this.leadRepository.findFirst({
         where: {
           email: input.email,
           organizationId: input.organizationId,
@@ -76,7 +76,7 @@ export class DeduplicationService {
 
     // Check by content hash (fuzzy deduplication)
     const contentHash = this.computeContentHash(input);
-    const byHash = await this.prismaService.lead.findFirst({
+    const byHash = await this.leadRepository.findFirst({
       where: {
         contentHash,
         organizationId: input.organizationId,
@@ -115,7 +115,7 @@ export class DeduplicationService {
   ): Promise<unknown[]> {
     const nameParts = name.toLowerCase().split(' ');
 
-    const leads = await this.prismaService.lead.findMany({
+    const leads = await this.leadRepository.findMany({
       where: {
         organizationId,
         OR: [
@@ -153,9 +153,9 @@ export class DeduplicationService {
     deduplicationCoverage: number;
   }> {
     const [total, withEmail, withHash] = await Promise.all([
-      this.prismaService.lead.count({ where: { organizationId } }),
-      this.prismaService.lead.count({ where: { organizationId, email: { not: null } } }),
-      this.prismaService.lead.count({ where: { organizationId, contentHash: { not: null } } }),
+      this.leadRepository.count({ where: { organizationId } }),
+      this.leadRepository.count({ where: { organizationId, email: { not: null } } }),
+      this.leadRepository.count({ where: { organizationId, contentHash: { not: null } } }),
     ]);
 
     return {

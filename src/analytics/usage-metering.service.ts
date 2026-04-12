@@ -1,17 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { OrganizationRepository } from '../database/repositories/organization.repository';
+import { UsageRecordRepository } from '../database/repositories/usage-record.repository';
 
 @Injectable()
 export class UsageMeteringService {
   private readonly logger = new Logger(UsageMeteringService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly usageRecordRepository: UsageRecordRepository,
+    private readonly organizationRepository: OrganizationRepository,
+  ) {}
 
   async getDailyUsage(organizationId: string, date?: Date) {
     const targetDate = date ? new Date(date) : new Date();
     targetDate.setHours(0, 0, 0, 0);
 
-    return this.prisma.usageRecord.findUnique({
+    return this.usageRecordRepository.findUnique({
       where: { organizationId_date: { organizationId, date: targetDate } },
     });
   }
@@ -21,12 +25,12 @@ export class UsageMeteringService {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const records = await this.prisma.usageRecord.findMany({
+    const records = await this.usageRecordRepository.findMany({
       where: { organizationId, date: { gte: startOfMonth } },
     });
 
     return records.reduce(
-      (totals, r) => ({
+      (totals: any, r: any) => ({
         aiTokensUsed: totals.aiTokensUsed + Number(r.aiTokensUsed),
         leadsProcessed: totals.leadsProcessed + r.leadsProcessed,
         scrapesExecuted: totals.scrapesExecuted + r.scrapesExecuted,
@@ -36,7 +40,7 @@ export class UsageMeteringService {
   }
 
   async checkQuota(organizationId: string): Promise<{ withinLimits: boolean; reason?: string }> {
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    const org = await this.organizationRepository.findUnique({ where: { id: organizationId } });
     if (!org) return { withinLimits: false, reason: 'Organization not found' };
 
     const daily = await this.getDailyUsage(organizationId);
@@ -61,7 +65,7 @@ export class UsageMeteringService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    await this.prisma.usageRecord.upsert({
+    await this.usageRecordRepository.upsert({
       where: { organizationId_date: { organizationId, date: today } },
       update: { leadsProcessed: { increment: 1 } },
       create: {

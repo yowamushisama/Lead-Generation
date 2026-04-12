@@ -1,19 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ComplianceService } from './compliance.service';
-import { PrismaService } from '../database/prisma.service';
+import { LeadRepository } from '../database/repositories/lead.repository';
+import { MessageRepository } from '../database/repositories/message.repository';
+import { PrismaTransactionService } from '../database/repositories/prisma-transaction.service';
 import { DataRetentionService } from './data-retention.service';
 
-const mockPrisma = {
-  lead: {
-    findFirst: jest.fn(),
-    update: jest.fn(),
-    updateMany: jest.fn(),
-    count: jest.fn(),
-    delete: jest.fn(),
-  },
-  message: { updateMany: jest.fn() },
-  $transaction: jest.fn(),
+const mockLeadRepository = {
+  findFirst: jest.fn(),
+  update: jest.fn(),
+  count: jest.fn(),
+  delete: jest.fn(),
+};
+
+const mockMessageRepository = {
+  updateMany: jest.fn(),
+};
+
+const mockTransaction = {
+  run: jest.fn(),
 };
 
 const mockDataRetention = {};
@@ -44,7 +49,9 @@ describe('ComplianceService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ComplianceService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: LeadRepository, useValue: mockLeadRepository },
+        { provide: MessageRepository, useValue: mockMessageRepository },
+        { provide: PrismaTransactionService, useValue: mockTransaction },
         { provide: DataRetentionService, useValue: mockDataRetention },
       ],
     }).compile();
@@ -56,20 +63,16 @@ describe('ComplianceService', () => {
 
   describe('processOptOut', () => {
     it('marks lead opted-out and cancels in-flight messages', async () => {
-      mockPrisma.lead.findFirst.mockResolvedValue(leadRow);
-      mockPrisma.$transaction.mockImplementation(async (fn: Function) => {
-        const tx = {
-          lead: { update: jest.fn().mockResolvedValue({ ...leadRow, optedOut: true }) },
-          message: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
-        };
-        return fn(tx);
-      });
+      mockLeadRepository.findFirst.mockResolvedValue(leadRow);
+      mockLeadRepository.update.mockResolvedValue({ ...leadRow, optedOut: true });
+      mockMessageRepository.updateMany.mockResolvedValue({ count: 2 });
+      mockTransaction.run.mockImplementation(async (fn: Function) => fn({}));
 
       await expect(service.processOptOut(tenant as any, 'lead-1')).resolves.toBeUndefined();
     });
 
     it('throws NotFoundException for unknown lead', async () => {
-      mockPrisma.lead.findFirst.mockResolvedValue(null);
+      mockLeadRepository.findFirst.mockResolvedValue(null);
 
       await expect(service.processOptOut(tenant as any, 'ghost')).rejects.toThrow(NotFoundException);
     });
@@ -79,7 +82,7 @@ describe('ComplianceService', () => {
 
   describe('exportLeadData', () => {
     it('returns export with messages and conversations', async () => {
-      mockPrisma.lead.findFirst.mockResolvedValue(leadRow);
+      mockLeadRepository.findFirst.mockResolvedValue(leadRow);
 
       const result = await service.exportLeadData(tenant as any, 'lead-1');
 
@@ -90,7 +93,7 @@ describe('ComplianceService', () => {
     });
 
     it('throws NotFoundException for unknown lead', async () => {
-      mockPrisma.lead.findFirst.mockResolvedValue(null);
+      mockLeadRepository.findFirst.mockResolvedValue(null);
 
       await expect(service.exportLeadData(tenant as any, 'ghost')).rejects.toThrow(NotFoundException);
     });
@@ -100,15 +103,15 @@ describe('ComplianceService', () => {
 
   describe('deleteLeadData', () => {
     it('deletes lead record (cascade handles messages/conversations)', async () => {
-      mockPrisma.lead.findFirst.mockResolvedValue(leadRow);
-      mockPrisma.lead.delete.mockResolvedValue(leadRow);
+      mockLeadRepository.findFirst.mockResolvedValue(leadRow);
+      mockLeadRepository.delete.mockResolvedValue(leadRow);
 
       await expect(service.deleteLeadData(tenant as any, 'lead-1')).resolves.toBeUndefined();
-      expect(mockPrisma.lead.delete).toHaveBeenCalledWith({ where: { id: 'lead-1' } });
+      expect(mockLeadRepository.delete).toHaveBeenCalledWith({ where: { id: 'lead-1' } });
     });
 
     it('throws NotFoundException for unknown lead', async () => {
-      mockPrisma.lead.findFirst.mockResolvedValue(null);
+      mockLeadRepository.findFirst.mockResolvedValue(null);
 
       await expect(service.deleteLeadData(tenant as any, 'ghost')).rejects.toThrow(NotFoundException);
     });
@@ -118,7 +121,7 @@ describe('ComplianceService', () => {
 
   describe('getRetentionSummary', () => {
     it('returns correct counts and policy days', async () => {
-      mockPrisma.lead.count
+      mockLeadRepository.count
         .mockResolvedValueOnce(3)    // expiringSoon
         .mockResolvedValueOnce(5)    // optedOut
         .mockResolvedValueOnce(200); // total

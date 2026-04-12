@@ -5,7 +5,7 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES, JOB_NAMES } from '../../common/constants/queue-names';
 import { PipelineJobData } from '../orchestrator.service';
 import { IntentDetectorStage } from '../stages/intent-detector.stage';
-import { PrismaService } from '../../database/prisma.service';
+import { LeadRepository } from '../../database/repositories/lead.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { OrchestratorService } from '../orchestrator.service';
 
@@ -15,7 +15,7 @@ export class IntentProcessor extends WorkerHost {
 
   constructor(
     private readonly intentStage: IntentDetectorStage,
-    private readonly prisma: PrismaService,
+    private readonly leadRepository: LeadRepository,
     private readonly orchestrator: OrchestratorService,
   ) {
     super();
@@ -32,7 +32,7 @@ export class IntentProcessor extends WorkerHost {
       let resolvedLeadId = leadId;
       if (!resolvedLeadId && rawInput) {
         const meta = (rawInput.metadata ?? {}) as Record<string, unknown>;
-        const lead = await this.prisma.lead.create({
+        const lead = await this.leadRepository.create({
           data: {
             organizationId,
             source: rawInput.source,
@@ -82,7 +82,7 @@ export class IntentProcessor extends WorkerHost {
       );
 
       // Persist intent results
-      await this.prisma.lead.update({
+      await this.leadRepository.update({
         where: { id: resolvedLeadId },
         data: {
           intentType: output.intent.intentType,
@@ -98,7 +98,7 @@ export class IntentProcessor extends WorkerHost {
       if (output.intent.intentConfidence >= 0.5) {
         await this.orchestrator.enqueueForStage(resolvedLeadId, 'enrich', context, { campaignId });
       } else {
-        await this.prisma.lead.update({
+        await this.leadRepository.update({
           where: { id: resolvedLeadId },
           data: { status: LeadStatus.DISQUALIFIED },
         });

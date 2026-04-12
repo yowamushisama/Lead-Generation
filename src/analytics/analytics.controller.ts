@@ -76,7 +76,7 @@ export class AnalyticsController {
   ): Promise<ApiResponseDto<TrendRowDto[]>> {
     const raw = await this.analyticsService.getDailyTrend(tenant, days ? parseInt(days, 10) : 14);
     // Prisma returns aiTokensUsed as bigint — serialise to string for JSON transport
-    const data: TrendRowDto[] = raw.map((r) => ({
+    const data: TrendRowDto[] = raw.map((r: any) => ({
       date: r.date,
       leadsProcessed: r.leadsProcessed,
       aiTokensUsed: r.aiTokensUsed.toString(),

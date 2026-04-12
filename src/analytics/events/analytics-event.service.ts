@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../database/prisma.service';
+import { AnalyticsEventRepository } from '../../database/repositories/analytics-event.repository';
+import { UsageRecordRepository } from '../../database/repositories/usage-record.repository';
 
 export type AnalyticsEventType =
   | 'lead.created'
@@ -19,7 +20,10 @@ export type AnalyticsEventType =
 export class AnalyticsEventService {
   private readonly logger = new Logger(AnalyticsEventService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly analyticsEventRepository: AnalyticsEventRepository,
+    private readonly usageRecordRepository: UsageRecordRepository,
+  ) {}
 
   async track(
     organizationId: string,
@@ -29,7 +33,7 @@ export class AnalyticsEventService {
     campaignId?: string,
   ): Promise<void> {
     try {
-      await this.prisma.analyticsEvent.create({
+      await this.analyticsEventRepository.create({
         data: {
           organizationId,
           eventType,
@@ -58,7 +62,7 @@ export class AnalyticsEventService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    await this.prisma.usageRecord.upsert({
+    await this.usageRecordRepository.upsert({
       where: {
         organizationId_date: { organizationId, date: today },
       },

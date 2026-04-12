@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { PrismaService } from '../database/prisma.service';
+import { OrganizationRepository } from '../database/repositories/organization.repository';
 import { ICPLearningService } from '../icp/icp-learning.service';
 
 @Injectable()
@@ -8,7 +8,7 @@ export class ICPRefinementJob {
   private readonly logger = new Logger(ICPRefinementJob.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly organizationRepository: OrganizationRepository,
     private readonly icpLearning: ICPLearningService,
   ) {}
 
@@ -16,7 +16,7 @@ export class ICPRefinementJob {
   async run(): Promise<void> {
     this.logger.log({ message: 'ICP refinement job started' });
 
-    const orgs = await this.prisma.organization.findMany({ select: { id: true } });
+    const orgs = await this.organizationRepository.findMany({ select: { id: true } });
 
     for (const org of orgs) {
       try {

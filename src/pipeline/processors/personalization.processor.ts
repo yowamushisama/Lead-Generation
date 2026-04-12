@@ -5,7 +5,8 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../../common/constants/queue-names';
 import { PipelineJobData } from '../orchestrator.service';
 import { PersonalizerStage } from '../stages/personalizer.stage';
-import { PrismaService } from '../../database/prisma.service';
+import { LeadRepository } from '../../database/repositories/lead.repository';
+import { OrganizationRepository } from '../../database/repositories/organization.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { OrchestratorService } from '../orchestrator.service';
 
@@ -15,7 +16,8 @@ export class PersonalizationProcessor extends WorkerHost {
 
   constructor(
     private readonly personalizerStage: PersonalizerStage,
-    private readonly prisma: PrismaService,
+    private readonly leadRepository: LeadRepository,
+    private readonly organizationRepository: OrganizationRepository,
     private readonly orchestrator: OrchestratorService,
   ) {
     super();
@@ -29,8 +31,8 @@ export class PersonalizationProcessor extends WorkerHost {
 
     try {
       const [lead, org] = await Promise.all([
-        this.prisma.lead.findUnique({ where: { id: leadId } }),
-        this.prisma.organization.findUnique({ where: { id: organizationId } }),
+        this.leadRepository.findUnique({ where: { id: leadId } }),
+        this.organizationRepository.findUnique({ where: { id: organizationId } }),
       ]);
 
       if (!lead) throw new Error(`Lead ${leadId} not found`);
@@ -53,7 +55,7 @@ export class PersonalizationProcessor extends WorkerHost {
         context,
       );
 
-      await this.prisma.lead.update({
+      await this.leadRepository.update({
         where: { id: leadId },
         data: {
           personalizationData: output.personalization as never,
