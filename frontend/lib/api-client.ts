@@ -1,62 +1,49 @@
+/**
+ * api-client.ts
+ *
+ * Domain-organised API call functions.
+ * - URLs come from api-urls.ts (single source of truth).
+ * - HTTP calls go through http.ts (axios, token injection, error normalisation).
+ * - Every function returns the unwrapped payload (ApiResponse<T>.data).
+ */
+
+import { get, post, patch, del } from './http';
+import { API_URLS } from './api-urls';
+
+export { ApiError } from './http';
+
 import type {
   Lead,
+  LeadFilters,
   LeadStatus,
+  LeadStats,
   Message,
   DashboardData,
   SourceBreakdown,
   TrendRow,
+  FunnelStage,
   LoginResponse,
   RegisterResponse,
   ApiResponse,
+  Campaign,
+  CampaignPerformance,
+  CreateCampaignDto,
+  ICPProfile,
+  ICPStats,
+  CreateICPDto,
+  Conversation,
+  ReplySuggestions,
+  HealthCheck,
 } from '@/models';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-
-function getToken(): string | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(/(?:^|;\s*)auth_token=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
+function unwrap<T>(response: ApiResponse<T>): T {
+  return response.data;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => res.statusText);
-    throw new ApiError(res.status, body);
-  }
-
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
-}
-
-export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-// ── Auth ─────────────────────────────────────────────────────────────────────
-// Responses are wrapped by ApiResponseDto.success() → unwrap .data before returning.
-
+// ── Auth ──────────────────────────────────────────────────────────────────────
 export const auth = {
   login: (email: string, password: string) =>
-    request<ApiResponse<LoginResponse>>('/api/v1/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    }).then((r) => r.data),
+    post<ApiResponse<LoginResponse>>(API_URLS.auth.login, { email, password }).then(unwrap),
 
   register: (payload: {
     email: string;
@@ -65,58 +52,223 @@ export const auth = {
     organizationName: string;
     organizationSlug: string;
   }) =>
-    request<ApiResponse<RegisterResponse>>('/api/v1/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }).then((r) => r.data),
+    post<ApiResponse<RegisterResponse>>(API_URLS.auth.register, payload).then(unwrap),
+
+  me: () =>
+    get<ApiResponse<{ id: string; email: string; organizationId: string; role: string }>>(
+      API_URLS.auth.me,
+    ).then(unwrap),
 };
 
-// ── Leads ────────────────────────────────────────────────────────────────────
-// Responses are wrapped by ApiResponseDto.success(paginate(...)) → unwrap and normalise.
-
+// ── Leads ─────────────────────────────────────────────────────────────────────
 export const leads = {
-  list: (params?: { status?: LeadStatus; limit?: number; offset?: number }) => {
-    const qs = params
-      ? '?' + new URLSearchParams(params as Record<string, string>).toString()
-      : '';
-    return request<ApiResponse<{ data: Lead[]; meta: { total: number } }>>(
-      `/api/v1/leads${qs}`,
-    ).then((r) => ({ data: r.data.data, total: r.data.meta.total }));
+  list: (params?: Partial<LeadFilters> & { page?: number; skip?: number; limit?: number }) => {
+    const normalizedParams =
+      params?.skip !== undefined && params?.limit
+        ? {
+            ...params,
+            page: Math.floor(params.skip / params.limit) + 1,
+          }
+        : params;
+    const { skip: _skip, ...queryParams } = normalizedParams ?? {};
+
+    return get<ApiResponse<{ data: Lead[]; meta: { total: number } }>>(
+      API_URLS.leads.list(queryParams as Record<string, string | number | boolean | undefined | null>),
+    )
+      .then(unwrap)
+      .then((payload) => ({ data: payload.data, total: payload.meta.total }));
   },
+
+  get: (id: string) =>
+    get<ApiResponse<Lead>>(API_URLS.leads.get(id)).then(unwrap),
+
+  stats: () =>
+    get<ApiResponse<LeadStats>>(API_URLS.leads.stats).then(unwrap),
+
+  update: (id: string, body: Partial<Lead & { status: LeadStatus }>) =>
+    patch<ApiResponse<Lead>>(API_URLS.leads.update(id), body).then(unwrap),
 
   updateStatus: (id: string, status: LeadStatus) =>
-    request<ApiResponse<Lead>>(`/api/v1/leads/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    }).then((r) => r.data),
+    patch<ApiResponse<Lead>>(API_URLS.leads.update(id), { status }).then(unwrap),
+
+  bulkCreate: (leadsPayload: unknown[]) =>
+    post<ApiResponse<{ created: number; duplicates: number; errors: number }>>(API_URLS.leads.bulk, leadsPayload).then(unwrap),
+
+  delete: (id: string) =>
+    del<void>(API_URLS.leads.delete(id)),
+
+  optOut: (id: string) =>
+    post<ApiResponse<Lead>>(API_URLS.leads.optOut(id)).then(unwrap),
 };
 
-// ── Messages ─────────────────────────────────────────────────────────────────
-// Responses are returned directly (no ApiResponseDto wrapper).
-
+// ── Messages ──────────────────────────────────────────────────────────────────
 export const messages = {
   listPending: () =>
-    request<Message[]>('/api/v1/messages/pending-approval'),
+    get<ApiResponse<Message[]>>(API_URLS.messages.pendingApproval).then(unwrap),
 
-  approve: (id: string) =>
-    request<Message>(`/api/v1/messages/${id}/approve`, { method: 'PATCH' }),
+  list: (params?: { leadId?: string; status?: string; campaignId?: string }) =>
+    get<ApiResponse<Message[]>>(API_URLS.messages.list(params)).then(unwrap),
 
-  reject: (id: string, reason?: string) => {
-    const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
-    return request<Message>(`/api/v1/messages/${id}/reject${qs}`, { method: 'PATCH' });
-  },
+  approve: (id: string, body?: { editedBody?: string; editedSubject?: string; note?: string }) =>
+    patch<ApiResponse<Message>>(API_URLS.messages.approve(id), body).then(unwrap),
+
+  reject: (id: string, reason?: string) =>
+    patch<ApiResponse<Message>>(API_URLS.messages.reject(id, reason)).then(unwrap),
+
+  markSent: (id: string) =>
+    patch<ApiResponse<Message>>(API_URLS.messages.markSent(id)).then(unwrap),
 };
 
-// ── Analytics ────────────────────────────────────────────────────────────────
-// Responses are returned directly (no ApiResponseDto wrapper).
+// ── Campaigns ─────────────────────────────────────────────────────────────────
+export const campaigns = {
+  list: (params?: { status?: string; isActive?: boolean }) =>
+    get<ApiResponse<Campaign[]>>(API_URLS.campaigns.list(params)).then(unwrap),
 
+  get: (id: string) =>
+    get<ApiResponse<Campaign>>(API_URLS.campaigns.get(id)).then(unwrap),
+
+  performance: (id: string) =>
+    get<ApiResponse<CampaignPerformance>>(API_URLS.campaigns.performance(id)).then(unwrap),
+
+  create: (body: CreateCampaignDto) =>
+    post<ApiResponse<Campaign>>(API_URLS.campaigns.create, body).then(unwrap),
+
+  update: (id: string, body: Partial<CreateCampaignDto>) =>
+    patch<ApiResponse<Campaign>>(API_URLS.campaigns.update(id), body).then(unwrap),
+
+  pause: (id: string) =>
+    patch<ApiResponse<Campaign>>(API_URLS.campaigns.pause(id)).then(unwrap),
+
+  resume: (id: string) =>
+    patch<ApiResponse<Campaign>>(API_URLS.campaigns.resume(id)).then(unwrap),
+};
+
+// ── ICP ───────────────────────────────────────────────────────────────────────
+export const icp = {
+  list: () =>
+    get<ApiResponse<ICPProfile[]>>(API_URLS.icp.list).then(unwrap),
+
+  get: (id: string) =>
+    get<ApiResponse<ICPProfile>>(API_URLS.icp.get(id)).then(unwrap),
+
+  stats: (id: string) =>
+    get<ApiResponse<ICPStats>>(API_URLS.icp.stats(id)).then(unwrap),
+
+  create: (body: CreateICPDto) =>
+    post<ApiResponse<ICPProfile>>(API_URLS.icp.create, body).then(unwrap),
+
+  update: (id: string, body: Partial<CreateICPDto & { isActive: boolean }>) =>
+    patch<ApiResponse<ICPProfile>>(API_URLS.icp.update(id), body).then(unwrap),
+};
+
+// ── Conversations ─────────────────────────────────────────────────────────────
+export const conversations = {
+  list: (params?: { leadId?: string; status?: string }) =>
+    get<ApiResponse<Conversation[]>>(API_URLS.conversations.list(params)).then(unwrap),
+
+  get: (id: string) =>
+    get<ApiResponse<Conversation>>(API_URLS.conversations.get(id)).then(unwrap),
+
+  replySuggestions: (id: string) =>
+    get<ApiResponse<ReplySuggestions>>(
+      API_URLS.conversations.replySuggestions(id),
+    ).then(unwrap),
+};
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
 export const analytics = {
   dashboard: () =>
-    request<DashboardData>('/api/v1/analytics/dashboard'),
+    get<ApiResponse<DashboardData>>(API_URLS.analytics.dashboard).then(unwrap),
+
+  funnel: () =>
+    get<ApiResponse<FunnelStage[]>>(API_URLS.analytics.funnel).then(unwrap),
 
   sources: () =>
-    request<SourceBreakdown[]>('/api/v1/analytics/sources'),
+    get<ApiResponse<SourceBreakdown[]>>(API_URLS.analytics.sources).then(unwrap),
 
   trend: (days = 14) =>
-    request<TrendRow[]>(`/api/v1/analytics/trend?days=${days}`),
+    get<ApiResponse<TrendRow[]>>(API_URLS.analytics.trend(days)).then(unwrap),
+};
+
+// ── Health ────────────────────────────────────────────────────────────────────
+export const health = {
+  full: () =>
+    get<HealthCheck>(API_URLS.health.full),
+
+  live: () =>
+    get<{ status: string }>(API_URLS.health.live),
+
+  ready: () =>
+    get<{ status: string }>(API_URLS.health.ready),
+};
+
+// ── Organizations ─────────────────────────────────────────────────────────────
+
+/** Shape returned by GET /api/v1/organizations/me/stats */
+export interface OrgStats {
+  organization: {
+    id: string;
+    name: string;
+    tier: string;
+    maxLeadsPerDay: number;
+  };
+  leads: {
+    today: number;
+    total: number;
+    hot: number;
+    remainingToday: number;
+  };
+  usage: {
+    aiTokensUsed: string;
+    aiCostCents: number;
+    scrapesExecuted: number;
+    leadsProcessed: number;
+    apiCallsMade: number;
+  } | null;
+}
+
+export const organizations = {
+  me: () =>
+    get<ApiResponse<{
+      id: string;
+      name: string;
+      slug: string;
+      tier: string;
+      maxLeadsPerDay: number;
+      maxAiTokensPerMonth: string;
+      serviceOffering: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>>(API_URLS.organizations.me).then(unwrap),
+
+  stats: () =>
+    get<ApiResponse<OrgStats>>(API_URLS.organizations.stats).then(unwrap),
+
+  update: (body: Record<string, unknown>) =>
+    patch<ApiResponse<unknown>>(API_URLS.organizations.update, body).then(unwrap),
+};
+
+// ── Compliance ────────────────────────────────────────────────────────────────
+
+/** Shape returned by GET /api/v1/compliance/retention-summary */
+export interface RetentionSummary {
+  totalLeads: number;
+  optedOut: number;
+  /** Leads whose dataExpiresAt is within the next 7 days */
+  expiringSoon: number;
+  retentionPolicyDays: number;
+}
+
+export const compliance = {
+  retentionSummary: () =>
+    get<ApiResponse<RetentionSummary>>(API_URLS.compliance.retentionSummary).then(unwrap),
+
+  optOut: (leadId: string) =>
+    post<ApiResponse<null>>(API_URLS.compliance.optOut(leadId)).then(unwrap),
+
+  exportLead: (leadId: string) =>
+    get<ApiResponse<unknown>>(API_URLS.compliance.export(leadId)).then(unwrap),
+
+  deleteLead: (leadId: string) =>
+    del<void>(API_URLS.compliance.deleteLead(leadId)),
 };

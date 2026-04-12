@@ -13,17 +13,20 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
-import { LeadsService } from './leads.service';
+import { LeadsService, LeadStats } from './leads.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { LeadFilterDto } from './dto/lead-filter.dto';
+import { LeadDetailResponseDto } from './dto/lead-response.dto';
+import { LeadQueryDto } from './dto/lead-query.dto';
 import { JwtAuthGuard } from '../common/guards/auth.guard';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Tenant } from '../common/decorators/tenant.decorator';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { PaginatedResult } from '../common/dto/pagination.dto';
+import { Lead } from '@prisma/client';
 
 @ApiTags('leads')
 @ApiBearerAuth()
@@ -39,7 +42,7 @@ export class LeadsController {
   async create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateLeadDto,
-  ): Promise<ApiResponseDto<unknown>> {
+  ): Promise<ApiResponseDto<Lead>> {
     const result = await this.leadsService.create(tenant, dto);
     return ApiResponseDto.success(result, 'Lead created');
   }
@@ -49,28 +52,27 @@ export class LeadsController {
   @ApiResponse({ status: 200, description: 'Leads retrieved' })
   async findAll(
     @Tenant() tenant: TenantContext,
-    @Query() filter: LeadFilterDto,
-    @Query() pagination: PaginationDto,
-  ): Promise<ApiResponseDto<unknown>> {
-    const result = await this.leadsService.findAll(tenant, filter, pagination);
+    @Query() query: LeadQueryDto,
+  ): Promise<ApiResponseDto<PaginatedResult<Lead>>> {
+    const result = await this.leadsService.findAll(tenant, query, query);
     return ApiResponseDto.success(result);
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Get lead statistics for the organization' })
-  async getStats(@Tenant() tenant: TenantContext): Promise<ApiResponseDto<unknown>> {
+  async getStats(@Tenant() tenant: TenantContext): Promise<ApiResponseDto<LeadStats>> {
     const result = await this.leadsService.getStats(tenant.organizationId);
     return ApiResponseDto.success(result);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a lead by ID' })
-  @ApiResponse({ status: 200, description: 'Lead retrieved' })
+  @ApiResponse({ status: 200, description: 'Lead retrieved', type: LeadDetailResponseDto })
   @ApiResponse({ status: 404, description: 'Lead not found' })
   async findOne(
     @Tenant() tenant: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseDto<unknown>> {
+  ): Promise<ApiResponseDto<LeadDetailResponseDto>> {
     const result = await this.leadsService.findOne(tenant.organizationId, id);
     return ApiResponseDto.success(result);
   }
@@ -82,7 +84,7 @@ export class LeadsController {
     @Tenant() tenant: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateLeadDto,
-  ): Promise<ApiResponseDto<unknown>> {
+  ): Promise<ApiResponseDto<Lead>> {
     const result = await this.leadsService.update(tenant.organizationId, id, dto);
     return ApiResponseDto.success(result, 'Lead updated');
   }
@@ -104,7 +106,7 @@ export class LeadsController {
   async optOut(
     @Tenant() tenant: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseDto<unknown>> {
+  ): Promise<ApiResponseDto<Lead>> {
     const result = await this.leadsService.optOut(tenant.organizationId, id);
     return ApiResponseDto.success(result, 'Lead opted out');
   }
@@ -115,7 +117,7 @@ export class LeadsController {
   async bulkCreate(
     @Tenant() tenant: TenantContext,
     @Body() dtos: CreateLeadDto[],
-  ): Promise<ApiResponseDto<unknown>> {
+  ): Promise<ApiResponseDto<{ created: number; duplicates: number; errors: number }>> {
     const result = await this.leadsService.bulkCreate(tenant, dtos);
     return ApiResponseDto.success(result, 'Bulk creation completed');
   }

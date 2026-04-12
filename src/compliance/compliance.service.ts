@@ -3,6 +3,16 @@ import { PrismaService } from '../database/prisma.service';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { LeadStatus } from '../common/enums/lead-status.enum';
 import { DataRetentionService } from './data-retention.service';
+import { LeadExportResponseDto, StoredMessageEntryDto } from './dto/compliance-response.dto';
+
+/**
+ * Cast a Prisma JSON field to a typed array.
+ * Prisma's `JsonValue` cannot be directly assigned to typed interfaces;
+ * `unknown` is the canonical TypeScript bridge for this constraint.
+ */
+function fromJsonArray<T>(json: import('@prisma/client').Prisma.JsonValue): T[] {
+  return json as unknown as T[];
+}
 
 @Injectable()
 export class ComplianceService {
@@ -55,7 +65,7 @@ export class ComplianceService {
   /**
    * GDPR: Right of access — export all data for a lead
    */
-  async exportLeadData(tenant: TenantContext, leadId: string) {
+  async exportLeadData(tenant: TenantContext, leadId: string): Promise<LeadExportResponseDto> {
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, organizationId: tenant.organizationId },
       include: {
@@ -70,7 +80,7 @@ export class ComplianceService {
       exportedAt: new Date().toISOString(),
       lead: {
         id: lead.id,
-        name: lead.name,
+        name: lead.name ?? '',
         email: lead.email,
         role: lead.role,
         company: lead.company,
@@ -79,7 +89,11 @@ export class ComplianceService {
         status: lead.status,
         score: lead.score,
         messages: lead.messages,
-        conversations: lead.conversations,
+        conversations: lead.conversations.map((c) => ({
+          channel: c.channel,
+          messages: fromJsonArray<StoredMessageEntryDto>(c.messages),
+          status: c.status,
+        })),
       },
     };
   }

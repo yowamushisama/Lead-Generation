@@ -28,7 +28,7 @@ export function LeadBoard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['leads'],
-    queryFn: () => leadsApi.list({ limit: 500 }),
+    queryFn: () => leadsApi.list({ limit: 100 }),
   });
 
   const moveMutation = useMutation({

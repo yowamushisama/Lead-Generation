@@ -3,6 +3,8 @@ export interface LoginResponse {
   user: {
     id: string;
     email: string;
+    name: string | null;
+    role: string;
     organizationId: string;
   };
 }

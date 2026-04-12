@@ -1,16 +1,34 @@
-import type { Metadata } from "next";
-import { Geist } from "next/font/google";
-import "./globals.css";
-import { QueryProvider } from "@/lib/query-client";
+import type { Metadata } from 'next';
+import { Syne, IBM_Plex_Mono, DM_Sans } from 'next/font/google';
+import './globals.css';
+import { QueryProvider } from '@/lib/query-client';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const syne = Syne({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-syne',
+  display: 'swap',
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-ibm-plex-mono',
+  display: 'swap',
+});
+
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-dm-sans',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: "Lead Generation Engine",
-  description: "AI Intent-Based Client Acquisition Dashboard",
+  title: {
+    default: 'Obsidian — AI Acquisition Engine',
+    template: '%s · Obsidian',
+  },
+  description: 'AI Intent-Based Client Acquisition Engine — discover, score, and convert high-intent B2B leads.',
 };
 
 export default function RootLayout({
@@ -19,8 +37,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900">
+    <html
+      lang="en"
+      className={`${syne.variable} ${ibmPlexMono.variable} ${dmSans.variable} h-full`}
+    >
+      <body className="min-h-full bg-base text-ink antialiased">
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

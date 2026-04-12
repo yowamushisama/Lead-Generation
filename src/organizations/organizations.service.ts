@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException, Logger } from '@nestj
 import { PrismaService } from '../database/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { OrganizationResponseDto, OrgStatsResponseDto } from './dto/organization-response.dto';
 
 @Injectable()
 export class OrganizationsService {
@@ -9,7 +10,7 @@ export class OrganizationsService {
 
   constructor(private readonly prismaService: PrismaService) {}
 
-  async create(dto: CreateOrganizationDto): Promise<unknown> {
+  async create(dto: CreateOrganizationDto): Promise<OrganizationResponseDto> {
     const existing = await this.prismaService.organization.findUnique({
       where: { slug: dto.slug },
     });
@@ -36,31 +37,22 @@ export class OrganizationsService {
       organizationId: organization.id,
     });
 
-    return organization;
+    return this.toOrganizationDto(organization);
   }
 
-  async findById(id: string): Promise<unknown> {
+  async findById(id: string): Promise<OrganizationResponseDto> {
     const organization = await this.prismaService.organization.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: {
-            users: true,
-            leads: true,
-            campaigns: true,
-          },
-        },
-      },
     });
 
     if (!organization) {
       throw new NotFoundException(`Organization with ID '${id}' not found`);
     }
 
-    return organization;
+    return this.toOrganizationDto(organization);
   }
 
-  async findBySlug(slug: string): Promise<unknown> {
+  async findBySlug(slug: string): Promise<OrganizationResponseDto> {
     const organization = await this.prismaService.organization.findUnique({
       where: { slug },
     });
@@ -69,10 +61,10 @@ export class OrganizationsService {
       throw new NotFoundException(`Organization with slug '${slug}' not found`);
     }
 
-    return organization;
+    return this.toOrganizationDto(organization);
   }
 
-  async update(id: string, dto: UpdateOrganizationDto): Promise<unknown> {
+  async update(id: string, dto: UpdateOrganizationDto): Promise<OrganizationResponseDto> {
     await this.findById(id);
 
     if (dto.slug) {
@@ -106,10 +98,10 @@ export class OrganizationsService {
       organizationId: id,
     });
 
-    return updated;
+    return this.toOrganizationDto(updated);
   }
 
-  async getStats(organizationId: string): Promise<unknown> {
+  async getStats(organizationId: string): Promise<OrgStatsResponseDto> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -157,5 +149,31 @@ export class OrganizationsService {
   async exists(id: string): Promise<boolean> {
     const count = await this.prismaService.organization.count({ where: { id } });
     return count > 0;
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  private toOrganizationDto(org: {
+    id: string;
+    name: string;
+    slug: string;
+    tier: string;
+    maxLeadsPerDay: number;
+    maxAiTokensPerMonth: bigint;
+    serviceOffering: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): OrganizationResponseDto {
+    return {
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      tier: org.tier,
+      maxLeadsPerDay: org.maxLeadsPerDay,
+      maxAiTokensPerMonth: org.maxAiTokensPerMonth.toString(),
+      serviceOffering: org.serviceOffering,
+      createdAt: org.createdAt,
+      updatedAt: org.updatedAt,
+    };
   }
 }

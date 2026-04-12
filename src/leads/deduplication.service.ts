@@ -146,7 +146,12 @@ export class DeduplicationService {
     return results;
   }
 
-  async getDeduplicationStats(organizationId: string): Promise<unknown> {
+  async getDeduplicationStats(organizationId: string): Promise<{
+    totalLeads: number;
+    leadsWithEmail: number;
+    leadsWithHash: number;
+    deduplicationCoverage: number;
+  }> {
     const [total, withEmail, withHash] = await Promise.all([
       this.prismaService.lead.count({ where: { organizationId } }),
       this.prismaService.lead.count({ where: { organizationId, email: { not: null } } }),

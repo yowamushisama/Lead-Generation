@@ -172,7 +172,7 @@ export class MessagesService {
         status: MessageStatus.PENDING_APPROVAL,
       },
       include: {
-        lead: { select: { name: true, role: true, company: true, score: true, tier: true } },
+        lead: { select: { id: true, name: true, role: true, company: true, score: true, tier: true } },
       },
       orderBy: [{ lead: { score: 'desc' } }, { generatedAt: 'desc' }],
     });

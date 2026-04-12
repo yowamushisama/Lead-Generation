@@ -14,7 +14,16 @@ import { LeadFilterDto } from './dto/lead-filter.dto';
 import { PaginationDto, PaginatedResult, paginate } from '../common/dto/pagination.dto';
 import { LeadStatus } from '../common/enums/lead-status.enum';
 import { getTierFromScore } from '../common/enums/lead-tier.enum';
-import { Prisma } from '@prisma/client';
+import { Lead, Prisma } from '@prisma/client';
+import { LeadDetailResponseDto } from './dto/lead-response.dto';
+
+export interface LeadStats {
+  total: number;
+  averageScore: number;
+  byTier: Record<string, number>;
+  byStatus: Record<string, number>;
+  bySource: Record<string, number>;
+}
 
 @Injectable()
 export class LeadsService {
@@ -25,7 +34,7 @@ export class LeadsService {
     private readonly deduplicationService: DeduplicationService,
   ) {}
 
-  async create(tenant: TenantContext, dto: CreateLeadDto): Promise<unknown> {
+  async create(tenant: TenantContext, dto: CreateLeadDto): Promise<Lead> {
     const { organizationId } = tenant;
 
     // Deduplication check
@@ -97,7 +106,7 @@ export class LeadsService {
     tenant: TenantContext,
     filter: LeadFilterDto,
     pagination: PaginationDto,
-  ): Promise<PaginatedResult<unknown>> {
+  ): Promise<PaginatedResult<Lead>> {
     const { organizationId } = tenant;
 
     const where: Prisma.LeadWhereInput = {
@@ -140,7 +149,7 @@ export class LeadsService {
     return paginate(leads, total, pagination);
   }
 
-  async findOne(organizationId: string, id: string): Promise<unknown> {
+  async findOne(organizationId: string, id: string): Promise<LeadDetailResponseDto> {
     const lead = await this.prismaService.lead.findFirst({
       where: { id, organizationId, optedOut: false },
       include: {
@@ -159,10 +168,62 @@ export class LeadsService {
       throw new NotFoundException(`Lead with ID '${id}' not found`);
     }
 
-    return lead;
+    return {
+      id: lead.id,
+      organizationId: lead.organizationId,
+      externalId: lead.externalId,
+      source: lead.source,
+      sourceUrl: lead.sourceUrl,
+      sourceType: lead.sourceType,
+      name: lead.name,
+      headline: lead.headline,
+      bio: lead.bio,
+      role: lead.role,
+      company: lead.company,
+      companySize: lead.companySize,
+      industry: lead.industry,
+      location: lead.location,
+      email: lead.email,
+      phone: lead.phone,
+      website: lead.website,
+      intentType: lead.intentType,
+      intentUrgency: lead.intentUrgency,
+      intentConfidence: lead.intentConfidence,
+      isBuyer: lead.isBuyer,
+      budgetSignal: lead.budgetSignal,
+      hiringIntent: lead.hiringIntent,
+      companyStage: lead.companyStage,
+      technicalLevel: lead.technicalLevel,
+      score: lead.score,
+      tier: lead.tier,
+      recommendedChannel: lead.recommendedChannel,
+      status: lead.status,
+      optedOut: lead.optedOut,
+      optedOutAt: lead.optedOutAt,
+      dataExpiresAt: lead.dataExpiresAt,
+      campaignId: lead.campaignId,
+      messages: lead.messages.map((m) => ({
+        id: m.id,
+        channel: m.channel,
+        subject: m.subject,
+        body: m.body,
+        status: m.status,
+        sentAt: m.sentAt,
+        createdAt: m.createdAt,
+      })),
+      conversations: lead.conversations.map((c) => ({
+        id: c.id,
+        channel: c.channel,
+        messageCount: c.messageCount,
+        lastMessageAt: c.lastMessageAt,
+        status: c.status,
+      })),
+      createdAt: lead.createdAt,
+      updatedAt: lead.updatedAt,
+    };
   }
 
-  async update(organizationId: string, id: string, dto: UpdateLeadDto): Promise<unknown> {
+  async update(organizationId: string, id: string, dto: UpdateLeadDto): Promise<Lead> {
     const existing = await this.prismaService.lead.findFirst({
       where: { id, organizationId },
     });
@@ -223,7 +284,7 @@ export class LeadsService {
     });
   }
 
-  async optOut(organizationId: string, id: string): Promise<unknown> {
+  async optOut(organizationId: string, id: string): Promise<Lead> {
     const existing = await this.prismaService.lead.findFirst({
       where: { id, organizationId },
     });
@@ -284,7 +345,7 @@ export class LeadsService {
     return { created, duplicates, errors };
   }
 
-  async getStats(organizationId: string): Promise<unknown> {
+  async getStats(organizationId: string): Promise<LeadStats> {
     const [total, byTier, byStatus, bySource, avgScore] = await Promise.all([
       this.prismaService.lead.count({ where: { organizationId } }),
       this.prismaService.lead.groupBy({

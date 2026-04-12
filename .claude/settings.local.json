@@ -12,7 +12,9 @@
       "Bash(node:*)",
       "Bash(cd \"D:\\\\Engineering Books\\\\Coding Material\\\\Coding Material 2.0\\\\Coding Material 3.0\\\\Lead Generation\" && npx prisma generate 2>&1)",
       "Bash(npm run:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -E \"\\\\.\\(ts\\)$\")"
     ]
   }
 }
