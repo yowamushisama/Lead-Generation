@@ -154,12 +154,12 @@ export function PipelineMonitor() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-display text-xl font-700 text-ink">Pipeline Monitor</h1>
-          <p className="mt-0.5 font-mono text-[11px] text-dusk">
+          <p className="mt-0.5 font-mono text-[11px] text-mist">
             Real-time queue depths · diagnostic logs · failed jobs
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] text-dusk">Health</span>
+          <span className="font-mono text-[10px] text-mist">Health</span>
           <div className="flex h-6 w-16 overflow-hidden rounded-full bg-ink/[0.06]">
             <div
               className={cn(
@@ -177,7 +177,7 @@ export function PipelineMonitor() {
       <Card className="overflow-x-auto">
         <CardHeader>
           <CardTitle>Processing Pipeline</CardTitle>
-          <div className="flex items-center gap-1.5 font-mono text-[10px] text-dusk">
+          <div className="flex items-center gap-1.5 font-mono text-[10px] text-mist">
             <Activity className="h-3 w-3 animate-pulse-dot text-orchid" />
             Live
           </div>
@@ -214,7 +214,7 @@ export function PipelineMonitor() {
                   <p className="text-[12px] font-500 text-ink leading-tight mb-1">
                     {stage.label}
                   </p>
-                  <p className="font-mono text-[9px] text-dusk leading-relaxed flex-1">
+                  <p className="font-mono text-[9px] text-mist leading-relaxed flex-1">
                     {stage.desc}
                   </p>
 
@@ -223,7 +223,7 @@ export function PipelineMonitor() {
                     <span className="num font-mono text-2xl font-700" style={{ color: stage.color }}>
                       {count}
                     </span>
-                    <span className="font-mono text-[9px] text-dusk">leads</span>
+                    <span className="font-mono text-[9px] text-mist">leads</span>
                   </div>
                 </div>
 
@@ -292,7 +292,7 @@ export function PipelineMonitor() {
                   onClick={() => setAutoscroll(!autoscroll)}
                   className={cn(
                     'flex items-center gap-1 rounded px-2 py-1 font-mono text-[10px] transition-colors',
-                    autoscroll ? 'bg-aqua/10 text-aqua' : 'text-dusk hover:text-mist',
+                    autoscroll ? 'bg-aqua/10 text-aqua' : 'text-mist hover:text-ink',
                   )}
                 >
                   {autoscroll ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
@@ -308,7 +308,7 @@ export function PipelineMonitor() {
             >
               {filteredLogs.length === 0 ? (
                 <div className="flex h-full items-center justify-center">
-                  <p className="font-mono text-[11px] text-dusk">No logs match filter</p>
+                  <p className="font-mono text-[11px] text-mist">No logs match filter</p>
                 </div>
               ) : (
                 filteredLogs.map((log) => (
@@ -320,7 +320,7 @@ export function PipelineMonitor() {
                     >
                       {copiedId === log.id
                         ? <Check className="h-3 w-3 text-jade" />
-                        : <Copy className="h-3 w-3 text-dusk hover:text-mist" />}
+                        : <Copy className="h-3 w-3 text-mist hover:text-ink" />}
                     </button>
                   </div>
                 ))
@@ -329,8 +329,8 @@ export function PipelineMonitor() {
 
             {/* Footer */}
             <div className="flex items-center justify-between border-t border-ink/[0.06] px-4 py-2">
-              <span className="font-mono text-[10px] text-dusk">{filteredLogs.length} entries</span>
-              <span className={cn('flex items-center gap-1 font-mono text-[10px]', autoscroll ? 'text-jade' : 'text-dusk')}>
+              <span className="font-mono text-[10px] text-mist">{filteredLogs.length} entries</span>
+              <span className={cn('flex items-center gap-1 font-mono text-[10px]', autoscroll ? 'text-jade' : 'text-mist')}>
                 <span className={autoscroll ? 'dot-live' : 'dot-idle'} style={{ width: 6, height: 6 }} />
                 {autoscroll ? 'Live' : 'Paused'}
               </span>
@@ -354,7 +354,7 @@ export function PipelineMonitor() {
               {MOCK_FAILED_JOBS.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2">
                   <CheckCircle className="h-6 w-6 text-jade" />
-                  <p className="font-mono text-[11px] text-dusk">No failed jobs</p>
+                  <p className="font-mono text-[11px] text-mist">No failed jobs</p>
                 </div>
               ) : (
                 MOCK_FAILED_JOBS.map((job) => (
@@ -370,28 +370,28 @@ export function PipelineMonitor() {
                         <div className="flex items-center gap-1.5 mb-1">
                           <AlertCircle className="h-3 w-3 shrink-0 text-crimson" />
                           <span className="font-mono text-[10px] text-crimson uppercase">{job.queueName}</span>
-                          <span className="font-mono text-[9px] text-dusk">·</span>
-                          <span className="font-mono text-[9px] text-dusk">{job.attempts} attempts</span>
+                          <span className="font-mono text-[9px] text-mist">·</span>
+                          <span className="font-mono text-[9px] text-mist">{job.attempts} attempts</span>
                         </div>
                         <p className="font-mono text-[11px] text-mist truncate">{job.jobName}</p>
                         {job.leadId && (
-                          <p className="font-mono text-[9px] text-dusk">Lead #{job.leadId.slice(0, 8)}</p>
+                          <p className="font-mono text-[9px] text-mist">Lead #{job.leadId.slice(0, 8)}</p>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <button className="flex items-center gap-1 rounded border border-ink/[0.06] px-2 py-1 font-mono text-[9px] text-dusk hover:border-jade/30 hover:text-jade transition-colors">
+                        <button className="flex items-center gap-1 rounded border border-ink/[0.06] px-2 py-1 font-mono text-[9px] text-mist hover:border-jade/30 hover:text-jade transition-colors">
                           <RotateCcw className="h-2.5 w-2.5" />
                           Retry
                         </button>
                         {expandedJob === job.id
-                          ? <ChevronDown className="h-3 w-3 text-dusk" />
-                          : <ChevronRight className="h-3 w-3 text-dusk" />}
+                          ? <ChevronDown className="h-3 w-3 text-mist" />
+                          : <ChevronRight className="h-3 w-3 text-mist" />}
                       </div>
                     </div>
 
                     {expandedJob === job.id && (
                       <div className="mt-2 rounded border border-crimson/10 bg-crimson/[0.04] p-2">
-                        <p className="font-mono text-[10px] text-crimson/80 break-all leading-relaxed">
+                        <p className="font-mono text-[10px] text-crimson break-all leading-relaxed">
                           {job.error}
                         </p>
                       </div>
@@ -402,7 +402,7 @@ export function PipelineMonitor() {
             </div>
 
             <div className="border-t border-ink/[0.06] px-4 py-2">
-              <button className="w-full font-mono text-[10px] text-dusk hover:text-mist transition-colors text-center">
+              <button className="w-full font-mono text-[10px] text-mist hover:text-ink transition-colors text-center">
                 View all failed jobs →
               </button>
             </div>

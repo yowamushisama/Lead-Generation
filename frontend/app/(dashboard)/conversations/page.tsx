@@ -17,7 +17,7 @@ export default function ConversationsPage() {
     <div className="space-y-5 animate-fade-in">
       <div>
         <h1 className="font-display text-xl font-700 text-ink">Conversations</h1>
-        <p className="mt-0.5 font-mono text-[11px] text-dusk">{convs.length} active threads</p>
+        <p className="mt-0.5 font-mono text-[11px] text-mist">{convs.length} active threads</p>
       </div>
 
       {isLoading ? (
@@ -26,9 +26,9 @@ export default function ConversationsPage() {
         </div>
       ) : convs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <MessageCircle className="h-10 w-10 text-dusk" />
+          <MessageCircle className="h-10 w-10 text-mist" />
           <p className="text-[14px] font-500 text-mist">No conversations yet</p>
-          <p className="font-mono text-[11px] text-dusk">Conversations appear when leads reply to outreach</p>
+          <p className="font-mono text-[11px] text-mist">Conversations appear when leads reply to outreach</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -42,9 +42,9 @@ export default function ConversationsPage() {
                   <div className="flex items-center gap-2">
                     <p className="text-[13px] font-500 text-ink">{conv.lead?.company ?? conv.lead?.name ?? 'Unknown'}</p>
                     {conv.lead?.tier && <TierBadge tier={conv.lead.tier as import('@/models').LeadTier} />}
-                    <span className="ml-auto font-mono text-[10px] text-dusk">{relativeTime(conv.lastMessageAt)}</span>
+                    <span className="ml-auto font-mono text-[10px] text-mist">{relativeTime(conv.lastMessageAt)}</span>
                   </div>
-                  {conv.lead?.role && <p className="font-mono text-[10px] text-dusk">{conv.lead.role}</p>}
+                  {conv.lead?.role && <p className="font-mono text-[10px] text-mist">{conv.lead.role}</p>}
                   <div className="mt-1 flex items-center gap-3">
                     <span className="font-mono text-[10px] text-mist">{conv.messageCount} messages</span>
                     {conv.sentiment && <span className="font-mono text-[10px] text-orchid">{conv.sentiment}</span>}

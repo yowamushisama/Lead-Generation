@@ -1,53 +1,14 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { FileSpreadsheet, Upload, X, RefreshCw } from 'lucide-react';
-import { campaigns as campaignsApi } from '@/lib/api-client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileSpreadsheet, Upload, X, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { campaigns as campaignsApi, leads as leadsApi } from '@/lib/api-client';
 import { cn, relativeTime } from '@/lib/utils';
 import { FormField, TagInputMulti, Toggle } from './adapter-ui';
-
-// ── Types & constants ──────────────────────────────────────────────────────────
-
-type ColumnMapping = {
-  name: string; email: string; company: string; role: string;
-  industry: string; location: string; phone: string; website: string; bio: string;
-};
-
-const LEAD_FIELDS: (keyof ColumnMapping)[] = [
-  'name', 'email', 'company', 'role', 'industry', 'location', 'phone', 'website', 'bio',
-];
-
-const FIELD_ALIASES: Record<keyof ColumnMapping, string[]> = {
-  name:     ['name', 'full_name', 'contact_name'],
-  email:    ['email', 'email_address'],
-  company:  ['company', 'organization', 'employer'],
-  role:     ['role', 'title', 'job_title', 'position'],
-  industry: ['industry', 'sector'],
-  location: ['location', 'city', 'region'],
-  phone:    ['phone', 'telephone', 'mobile'],
-  website:  ['website', 'linkedin', 'url'],
-  bio:      ['bio', 'about', 'summary'],
-};
-
-const MOCK_IMPORT_HISTORY = [
-  { id: '1', filename: 'leads_q1_2026.csv',    importedAt: new Date(Date.now() - 86_400_000).toISOString(),      rowCount: 341, status: 'success' as const, skipped: 12 },
-  { id: '2', filename: 'prospects_march.xlsx', importedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), rowCount: 89,  status: 'partial' as const, skipped: 4  },
-  { id: '3', filename: 'contacts_export.csv',  importedAt: new Date(Date.now() - 7 * 86_400_000).toISOString(), rowCount: 512, status: 'success' as const, skipped: 0  },
-];
-
-function autoDetectMapping(headers: string[]): Partial<ColumnMapping> {
-  const result: Partial<ColumnMapping> = {};
-  for (const header of headers) {
-    const lower = header.toLowerCase().replace(/\s+/g, '_');
-    for (const [field, aliases] of Object.entries(FIELD_ALIASES) as [keyof ColumnMapping, string[]][]) {
-      if (aliases.some((a) => lower.includes(a)) && !result[field]) {
-        result[field] = header;
-      }
-    }
-  }
-  return result;
-}
+import { ColumnMapping, LEAD_FIELDS, MOCK_IMPORT_HISTORY } from './csv/constants';
+import { parseCsv, autoDetectMapping } from './csv/utils';
 
 // ── CSVDetailPanel ─────────────────────────────────────────────────────────────
 
@@ -59,12 +20,15 @@ export function CSVDetailPanel() {
   const [mapping, setMapping]         = useState<Partial<ColumnMapping>>({});
   const [delimiter, setDelimiter]     = useState<'comma' | 'semicolon' | 'tab'>('comma');
   const [skipHeader, setSkipHeader]   = useState(true);
-  const [maxRows, setMaxRows]         = useState(1000);
+  const [maxRows, setMaxRows]         = useState(500);
   const [deduplicate, setDeduplicate] = useState(true);
   const [campaignId, setCampaignId]   = useState('');
   const [importing, setImporting]     = useState(false);
   const [importProgress, setProgress] = useState(0);
+  const [importResult, setImportResult] = useState<{ created: number; duplicates: number; errors: number } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   const { data: campaigns = [] } = useQuery({
     queryKey: ['campaigns'],
@@ -74,18 +38,37 @@ export function CSVDetailPanel() {
   const delimChar = delimiter === 'comma' ? ',' : delimiter === 'semicolon' ? ';' : '\t';
 
   const parseFile = useCallback((f: File, dc: string) => {
-    const reader = new FileReader();
+    const isExcel = f.name.endsWith('.xlsx') || f.name.endsWith('.xls');
+    const reader  = new FileReader();
+
     reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const lines = text.split('\n').filter(Boolean);
-      if (lines.length === 0) return;
-      const headers = lines[0].split(dc).map((h) => h.trim().replace(/^"|"$/g, ''));
-      const rows    = lines.slice(1, 6).map((l) => l.split(dc).map((c) => c.trim().replace(/^"|"$/g, '')));
-      setCsvHeaders(headers);
-      setPreviewRows(rows);
-      setMapping(autoDetectMapping(headers));
+      const buf = e.target?.result;
+      if (buf == null) return;
+
+      if (isExcel) {
+        const wb      = XLSX.read(buf, { type: 'array' });
+        const sheet   = wb.Sheets[wb.SheetNames[0]];
+        // sheet_to_json with header:1 gives rows as string[][]
+        const allRows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' });
+        if (allRows.length === 0) return;
+        const headers  = (allRows[0] as string[]).map((h) => String(h).trim());
+        const dataRows = allRows.slice(1, 6).map((r) => (r as string[]).map((c) => String(c).trim()));
+        setCsvHeaders(headers);
+        setPreviewRows(dataRows);
+        setMapping(autoDetectMapping(headers));
+      } else {
+        const text    = new TextDecoder().decode(buf as ArrayBuffer);
+        const allRows = parseCsv(text, dc);
+        if (allRows.length === 0) return;
+        const headers = allRows[0];
+        const rows    = allRows.slice(1, 6);
+        setCsvHeaders(headers);
+        setPreviewRows(rows);
+        setMapping(autoDetectMapping(headers));
+      }
     };
-    reader.readAsText(f);
+
+    reader.readAsArrayBuffer(f);
   }, []);
 
   function handleFile(f: File) { setFile(f); parseFile(f, delimChar); }
@@ -102,21 +85,95 @@ export function CSVDetailPanel() {
     setCsvHeaders([]);
     setPreviewRows([]);
     setMapping({});
+    setImportResult(null);
+    setImportError(null);
+    setProgress(0);
   }
 
   // Re-parse when delimiter changes
   useEffect(() => { if (file) parseFile(file, delimChar); }, [delimiter, file, delimChar, parseFile]);
 
-  function triggerImport() {
-    setImporting(true);
-    setProgress(0);
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 100) { clearInterval(interval); setImporting(false); return 100; }
-        return p + Math.floor(Math.random() * 15) + 5;
+  async function parseAllRows(f: File, dc: string): Promise<Record<string, string>[]> {
+    const isExcel = f.name.endsWith('.xlsx') || f.name.endsWith('.xls');
+    const buf     = await f.arrayBuffer();
+
+    if (isExcel) {
+      const wb       = XLSX.read(buf, { type: 'array' });
+      const sheet    = wb.Sheets[wb.SheetNames[0]];
+      const allRows  = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' });
+      if (allRows.length === 0) return [];
+      const headers  = (allRows[0] as string[]).map((h) => String(h).trim());
+      const dataRows = allRows.slice(1).slice(0, maxRows);
+      return (dataRows as string[][]).map((r) => {
+        const row: Record<string, string> = {};
+        headers.forEach((h, i) => { const v = String(r[i] ?? '').trim(); if (v) row[h] = v; });
+        return row;
       });
-    }, 200);
-    // TODO: wire to POST /api/v1/leads/bulk with parsed CSV data
+    }
+
+    const text      = new TextDecoder().decode(buf);
+    const allRows   = parseCsv(text, dc);
+    if (allRows.length === 0) return [];
+    const headers   = allRows[0];
+    const dataRows  = (skipHeader ? allRows.slice(1) : allRows).slice(0, maxRows);
+    return dataRows.map((cells) => {
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => { const v = cells[i] ?? ''; if (v) row[h] = v; });
+      return row;
+    });
+  }
+
+  async function triggerImport() {
+    if (!file) return;
+    setImporting(true);
+    setProgress(10);
+    setImportResult(null);
+    setImportError(null);
+
+    try {
+      setProgress(30);
+
+      const rows = await parseAllRows(file, delimChar);
+      setProgress(50);
+
+      // Build the payload using the column mapping
+      const mapped = rows
+        .map((row) => {
+          const lead: Record<string, string | undefined> = {
+            source: 'csv_import',
+            sourceType: 'discovery',
+          };
+          for (const [field, header] of Object.entries(mapping) as [string, string][]) {
+            if (row[header]) lead[field] = row[header];
+          }
+          if (campaignId) lead.campaignId = campaignId;
+          return lead;
+        })
+        .filter((l) => l.name); // name is required
+
+      // Deduplicate by email within the file when the toggle is on
+      const seen = new Set<string>();
+      const payload = deduplicate
+        ? mapped.filter((l) => {
+            if (!l.email) return true;
+            if (seen.has(l.email)) return false;
+            seen.add(l.email);
+            return true;
+          })
+        : mapped;
+
+      setProgress(70);
+
+      const result = await leadsApi.bulkCreate(payload);
+      setProgress(100);
+      setImportResult(result);
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Import failed';
+      setImportError(message);
+    } finally {
+      setImporting(false);
+    }
   }
 
   function updateMapping(header: string, field: keyof ColumnMapping | '') {
@@ -137,7 +194,7 @@ export function CSVDetailPanel() {
         </div>
         <div>
           <h2 className="font-display text-[14px] font-600 text-ink">CSV Import</h2>
-          <p className="font-mono text-[10px] text-dusk">Upload a CSV or Excel file to import leads</p>
+          <p className="font-mono text-[10px] text-mist">Upload a CSV or Excel file to import leads</p>
         </div>
       </div>
 
@@ -174,8 +231,25 @@ export function CSVDetailPanel() {
             <button
               disabled={!file || importing}
               onClick={triggerImport}
-              className="flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-[11px] font-500 transition-all disabled:opacity-40"
-              style={{ background: '#7C3AED20', color: '#7C3AED', border: '1px solid #7C3AED30' }}
+              className="group flex items-center gap-2 rounded-lg px-4 py-2.5 font-mono text-[11px] font-600 transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                background: '#7C3AED',
+                color: '#ffffff',
+                border: '1px solid #6D28D9',
+                boxShadow: '0 1px 3px rgba(124,58,237,0.35)',
+              }}
+              onMouseEnter={(e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.background = '#6D28D9';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(124,58,237,0.45)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#7C3AED';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(124,58,237,0.35)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
             >
               {importing
                 ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Importing…</>
@@ -188,6 +262,21 @@ export function CSVDetailPanel() {
                   className="h-full rounded-full bg-orchid transition-all duration-200"
                   style={{ width: `${Math.min(importProgress, 100)}%` }}
                 />
+              </div>
+            )}
+            {importResult && (
+              <div className="flex items-start gap-2 rounded-lg border border-jade/20 bg-jade/[0.06] p-2.5">
+                <CheckCircle className="h-3.5 w-3.5 shrink-0 text-jade mt-0.5" />
+                <div className="font-mono text-[10px] text-jade space-y-0.5">
+                  <p className="font-600">Import complete</p>
+                  <p>{importResult.created} created · {importResult.duplicates} duplicates skipped · {importResult.errors} errors</p>
+                </div>
+              </div>
+            )}
+            {importError && (
+              <div className="flex items-start gap-2 rounded-lg border border-crimson/20 bg-crimson/[0.06] p-2.5">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-crimson mt-0.5" />
+                <p className="font-mono text-[10px] text-crimson">{importError}</p>
               </div>
             )}
           </div>
@@ -209,7 +298,7 @@ export function CSVDetailPanel() {
           ) : (
             <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-ink/[0.06] py-12">
               <FileSpreadsheet className="h-8 w-8 text-dusk/40" />
-              <p className="font-mono text-[11px] text-dusk">
+              <p className="font-mono text-[11px] text-mist">
                 Upload a file to see preview and column mapping
               </p>
             </div>
@@ -267,7 +356,7 @@ function DropZone({
           <Upload className="h-6 w-6 text-dusk" />
           <div className="text-center">
             <p className="font-mono text-[12px] text-mist">Drop CSV or Excel file here</p>
-            <p className="font-mono text-[10px] text-dusk">or click to browse · .csv .xlsx .xls</p>
+            <p className="font-mono text-[10px] text-mist">or click to browse · .csv .xlsx .xls</p>
           </div>
         </>
       )}
@@ -306,7 +395,7 @@ function ImportSettings({
                 'shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 font-mono text-[10px] border transition-colors',
                 delimiter === d
                   ? 'border-orchid/30 bg-orchid/10 text-orchid'
-                  : 'border-ink/[0.06] text-dusk hover:text-mist',
+                  : 'border-ink/[0.06] text-mist hover:text-ink',
               )}
             >
               {d === 'comma' ? 'Comma (,)' : d === 'semicolon' ? 'Semicolon (;)' : 'Tab (\\t)'}
@@ -322,12 +411,12 @@ function ImportSettings({
 
       <FormField label={`Max Rows: ${maxRows.toLocaleString()}`}>
         <input
-          type="range" min={10} max={5000} step={10} value={maxRows}
+          type="range" min={10} max={500} step={10} value={maxRows}
           onChange={(e) => setMaxRows(Number(e.target.value))}
           className="w-full accent-[#7C3AED]"
         />
-        <div className="flex justify-between font-mono text-[9px] text-dusk">
-          <span>10</span><span>5,000</span>
+        <div className="flex justify-between font-mono text-[9px] text-mist">
+          <span>10</span><span>500</span>
         </div>
       </FormField>
 
@@ -358,13 +447,13 @@ function ColumnMapper({
     <div className="rounded-xl border border-ink/[0.06] bg-elevated overflow-hidden">
       <div className="px-3 py-2 border-b border-ink/[0.06]">
         <p className="section-label">Column Mapping</p>
-        <p className="font-mono text-[9px] text-dusk mt-0.5">Map CSV headers to lead fields</p>
+        <p className="font-mono text-[9px] text-mist mt-0.5">Map CSV headers to lead fields</p>
       </div>
       <div className="divide-y divide-ink/[0.04] max-h-64 overflow-y-auto">
         {csvHeaders.map((header) => (
           <div key={header} className="flex items-center gap-3 px-3 py-1.5">
             <span className="flex-1 font-mono text-[10px] text-mist truncate">{header}</span>
-            <span className="text-dusk font-mono text-[10px]">→</span>
+            <span className="text-mist font-mono text-[10px]">→</span>
             <select
               value={Object.entries(mapping).find(([, v]) => v === header)?.[0] ?? ''}
               onChange={(e) => onUpdate(header, e.target.value as keyof ColumnMapping | '')}
@@ -393,7 +482,7 @@ function PreviewTable({ headers, rows }: { headers: string[]; rows: string[][] }
           <thead>
             <tr className="border-b border-ink/[0.06] bg-elevated">
               {headers.map((h) => (
-                <th key={h} className="px-3 py-1.5 font-mono text-[9px] text-dusk whitespace-nowrap">{h}</th>
+                <th key={h} className="px-3 py-1.5 font-mono text-[9px] text-mist whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
@@ -431,12 +520,12 @@ function ImportHistory({
           <div key={record.id} className="flex items-center gap-3 px-3 py-2">
             <div className="flex-1 min-w-0">
               <p className="font-mono text-[11px] text-mist truncate">{record.filename}</p>
-              <p className="font-mono text-[9px] text-dusk">{relativeTime(record.importedAt)}</p>
+              <p className="font-mono text-[9px] text-mist">{relativeTime(record.importedAt)}</p>
             </div>
             <div className="text-right">
               <p className="font-mono text-[11px] text-ink">{record.rowCount} leads</p>
               {record.skipped > 0 && (
-                <p className="font-mono text-[9px] text-dusk">{record.skipped} skipped</p>
+                <p className="font-mono text-[9px] text-mist">{record.skipped} skipped</p>
               )}
             </div>
             <span

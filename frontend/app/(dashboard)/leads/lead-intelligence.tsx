@@ -205,7 +205,7 @@ export function LeadIntelligence() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name, company, role…"
-            className="h-9 w-full rounded-lg border border-ink/[0.06] bg-surface pl-9 pr-4 font-mono text-[11px] text-ink placeholder:text-dusk focus:border-aqua/30 focus:outline-none focus:ring-1 focus:ring-aqua/20"
+            className="h-9 w-full rounded-lg border border-ink/[0.06] bg-surface pl-9 pr-4 font-mono text-[11px] text-ink placeholder:text-mist/60 focus:border-aqua/30 focus:outline-none focus:ring-1 focus:ring-aqua/20"
           />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -286,7 +286,7 @@ export function LeadIntelligence() {
                   ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-16 text-center">
-                        <p className="font-mono text-[12px] text-dusk">No leads match your filters</p>
+                        <p className="font-mono text-[12px] text-mist">No leads match your filters</p>
                       </td>
                     </tr>
                   )
@@ -313,7 +313,7 @@ export function LeadIntelligence() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-ink/[0.06] px-4 py-3">
-            <span className="num font-mono text-[11px] text-dusk">
+            <span className="num font-mono text-[11px] text-mist">
               {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
             </span>
             <div className="flex items-center gap-1">
@@ -432,7 +432,7 @@ function LeadRow({
               {lead.company ?? lead.name ?? '—'}
             </p>
             {lead.name && lead.company && (
-              <p className="truncate font-mono text-[10px] text-dusk">{lead.name}</p>
+              <p className="truncate font-mono text-[10px] text-mist">{lead.name}</p>
             )}
           </div>
         </button>
@@ -483,7 +483,7 @@ function LeadRow({
 
       {/* Created */}
       <td className="px-3 py-2.5">
-        <span className="num font-mono text-[10px] text-dusk">{relativeTime(lead.createdAt)}</span>
+        <span className="num font-mono text-[10px] text-mist">{relativeTime(lead.createdAt)}</span>
       </td>
     </tr>
   );
@@ -524,7 +524,7 @@ function LeadExpandedRow({ lead }: { lead: Lead }) {
             <p className="section-label">Psychographic Signals</p>
             {lead.painPoints && lead.painPoints.length > 0 && (
               <div>
-                <p className="font-mono text-[9px] uppercase tracking-wider text-crimson/70 mb-1">Pain Points</p>
+                <p className="font-mono text-[9px] uppercase tracking-wider text-crimson mb-1">Pain Points</p>
                 <ul className="space-y-0.5">
                   {lead.painPoints.map((p, i) => (
                     <li key={i} className="font-mono text-[10px] text-mist flex items-start gap-1">
@@ -536,7 +536,7 @@ function LeadExpandedRow({ lead }: { lead: Lead }) {
             )}
             {lead.desires && lead.desires.length > 0 && (
               <div>
-                <p className="font-mono text-[9px] uppercase tracking-wider text-jade/70 mb-1">Desires</p>
+                <p className="font-mono text-[9px] uppercase tracking-wider text-jade mb-1">Desires</p>
                 <ul className="space-y-0.5">
                   {lead.desires.map((d, i) => (
                     <li key={i} className="font-mono text-[10px] text-mist flex items-start gap-1">
@@ -562,7 +562,7 @@ function LeadExpandedRow({ lead }: { lead: Lead }) {
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <p className="font-mono text-[9px] uppercase tracking-wider text-dusk mb-0.5">{label}</p>
+      <p className="font-mono text-[9px] uppercase tracking-wider text-mist mb-0.5">{label}</p>
       <div className="font-mono text-[11px] text-mist">{value}</div>
     </div>
   );
@@ -626,7 +626,7 @@ function ViewHeader({
     <div className="flex items-start justify-between gap-4">
       <div>
         <h1 className="font-display text-xl font-700 text-ink">Lead Intelligence</h1>
-        <p className="mt-0.5 font-mono text-[11px] text-dusk">
+        <p className="mt-0.5 font-mono text-[11px] text-mist">
           {total.toLocaleString()} leads
           {selectedCount > 0 && <span className="ml-2 text-aqua">{selectedCount} selected</span>}
         </p>
@@ -636,7 +636,7 @@ function ViewHeader({
         {/* Export */}
         <button
           onClick={onExport}
-          className="flex items-center gap-1.5 rounded-lg border border-ink/[0.06] bg-surface px-3 py-2 font-mono text-[11px] text-dusk transition-colors hover:text-mist"
+          className="flex items-center gap-1.5 rounded-lg border border-ink/[0.06] bg-surface px-3 py-2 font-mono text-[11px] text-mist transition-colors hover:text-ink"
         >
           <Download className="h-3.5 w-3.5" />
           Export

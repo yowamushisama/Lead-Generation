@@ -58,7 +58,7 @@ export function ICPBuilder() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-display text-xl font-700 text-ink">ICP Builder</h1>
-          <p className="mt-0.5 font-mono text-[11px] text-dusk">Configure Ideal Customer Profiles</p>
+          <p className="mt-0.5 font-mono text-[11px] text-mist">Configure Ideal Customer Profiles</p>
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
@@ -108,7 +108,7 @@ export function ICPBuilder() {
                           'rounded-md px-2.5 py-1 font-mono text-[10px] transition-colors border',
                           active
                             ? 'border-aqua/30 bg-aqua/10 text-aqua'
-                            : 'border-ink/[0.06] text-dusk hover:text-mist',
+                            : 'border-ink/[0.06] text-mist hover:text-ink',
                         )}
                       >
                         {stage}
@@ -162,12 +162,12 @@ export function ICPBuilder() {
                   .filter(([k]) => k !== 'negative')
                   .reduce((sum, [, v]) => sum + v, 0)}
               </span>
-              <span className="font-mono text-[10px] text-dusk">points possible</span>
+              <span className="font-mono text-[10px] text-mist">points possible</span>
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-ink/[0.06]">
-            <button onClick={() => setShowCreate(false)} className="rounded-lg border border-ink/[0.06] px-4 py-2 font-mono text-[11px] text-dusk hover:text-mist">Cancel</button>
+            <button onClick={() => setShowCreate(false)} className="rounded-lg border border-ink/[0.06] px-4 py-2 font-mono text-[11px] text-mist hover:text-ink">Cancel</button>
             <button
               onClick={() => createMutation.mutate()}
               disabled={!newName.trim() || createMutation.isPending}
@@ -186,9 +186,9 @@ export function ICPBuilder() {
         </div>
       ) : profiles.length === 0 && !showCreate ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Target className="h-10 w-10 text-dusk" />
+          <Target className="h-10 w-10 text-mist" />
           <p className="text-[14px] font-500 text-mist">No ICP profiles yet</p>
-          <p className="font-mono text-[11px] text-dusk">Create an ICP to improve lead scoring accuracy</p>
+          <p className="font-mono text-[11px] text-mist">Create an ICP to improve lead scoring accuracy</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -227,12 +227,12 @@ function ICPProfileCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-display text-[14px] font-600 text-ink">{profile.name}</h3>
-            <span className="font-mono text-[9px] text-dusk">v{profile.version}</span>
+            <span className="font-mono text-[9px] text-mist">v{profile.version}</span>
             {profile.isActive && (
               <span className="rounded-full bg-jade/10 px-2 py-0.5 font-mono text-[9px] text-jade">Active</span>
             )}
           </div>
-          <p className="font-mono text-[10px] text-dusk mt-0.5">
+          <p className="font-mono text-[10px] text-mist mt-0.5">
             {profile.config?.targetRoles?.slice(0, 3).join(', ') || 'No roles configured'}
             {(profile.config?.targetRoles?.length ?? 0) > 3 && ` +${(profile.config?.targetRoles?.length ?? 0) - 3} more`}
           </p>
@@ -240,7 +240,7 @@ function ICPProfileCard({
         {profile.conversionRate !== undefined && (
           <div className="text-right mr-2">
             <p className="num font-mono text-[14px] font-600 text-jade">{(profile.conversionRate * 100).toFixed(1)}%</p>
-            <p className="font-mono text-[9px] text-dusk">conv. rate</p>
+            <p className="font-mono text-[9px] text-mist">conv. rate</p>
           </div>
         )}
         {expanded ? <ChevronDown className="h-4 w-4 text-dusk shrink-0" /> : <ChevronRight className="h-4 w-4 text-dusk shrink-0" />}
@@ -265,7 +265,7 @@ function ICPProfileCard({
                       <span key={tag} className="rounded-md bg-elevated px-1.5 py-0.5 font-mono text-[9px] text-mist">{tag}</span>
                     ))}
                     {tags.length > 5 && (
-                      <span className="font-mono text-[9px] text-dusk">+{tags.length - 5}</span>
+                      <span className="font-mono text-[9px] text-mist">+{tags.length - 5}</span>
                     )}
                   </div>
                 </div>
@@ -325,7 +325,7 @@ function TagInputMulti({ label, tags, onChange, placeholder }: {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); } }}
-          className="w-full bg-transparent font-mono text-[11px] text-ink placeholder:text-dusk focus:outline-none"
+          className="w-full bg-transparent font-mono text-[11px] text-ink placeholder:text-mist/60 focus:outline-none"
           placeholder={placeholder}
         />
       </div>

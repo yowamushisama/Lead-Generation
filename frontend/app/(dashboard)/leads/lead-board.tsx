@@ -43,7 +43,7 @@ export function LeadBoard() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-sm text-zinc-400">
+      <div className="flex items-center justify-center py-16 font-mono text-[11px] text-mist">
         Loading leads...
       </div>
     );
@@ -126,13 +126,13 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className="flex w-52 shrink-0 flex-col rounded-lg bg-white shadow-sm ring-1 ring-zinc-200"
+      className="flex w-52 shrink-0 flex-col rounded-lg bg-elevated ring-1 ring-white/[0.07]"
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-100">
-        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06]">
+        <span className="section-label">
           {column.label}
         </span>
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
+        <span className="rounded-full bg-overlay px-2 py-0.5 font-mono text-[10px] text-mist">
           {leads.length}
         </span>
       </div>
@@ -173,15 +173,15 @@ function LeadCard({
       style={style}
       {...attributes}
       {...listeners}
-      className={`rounded-md bg-white p-3 ring-1 ring-zinc-200 cursor-grab active:cursor-grabbing select-none ${
-        isDragging ? 'shadow-lg ring-2 ring-zinc-400' : ''
+      className={`rounded-md bg-surface p-3 ring-1 ring-white/[0.08] cursor-grab active:cursor-grabbing select-none transition-shadow ${
+        isDragging ? 'shadow-lg shadow-black/40 ring-2 ring-aqua/30' : 'hover:ring-white/[0.14]'
       }`}
     >
-      <p className="text-sm font-medium text-zinc-900 truncate">
+      <p className="text-[12px] font-500 text-ink truncate">
         {lead.company ?? lead.name ?? 'Unknown'}
       </p>
       {lead.name && lead.company && (
-        <p className="text-xs text-zinc-500 truncate">{lead.name}</p>
+        <p className="font-mono text-[10px] text-mist truncate">{lead.name}</p>
       )}
       <div className="mt-2 flex items-center gap-1.5 flex-wrap">
         {lead.tier && (
@@ -191,11 +191,11 @@ function LeadCard({
             {lead.tier}
           </span>
         )}
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="rounded-full bg-overlay px-2 py-0.5 font-mono text-[10px] text-mist">
           {SOURCE_LABELS[lead.source] ?? lead.source}
         </span>
         {lead.score != null && (
-          <span className="ml-auto text-[11px] font-medium text-zinc-400">
+          <span className="ml-auto font-mono text-[11px] font-medium text-mist">
             {lead.score}
           </span>
         )}

@@ -39,8 +39,11 @@ export class TenantGuard implements CanActivate {
   private buildTenantContext(request: AuthenticatedRequest): TenantContext {
     if (this.tenantMode === TenantMode.SINGLE) {
       const userId = request.user?.sub ?? 'system';
+      // Prefer the organizationId embedded in the JWT so that requests work
+      // correctly even when DEFAULT_ORGANIZATION_ID is not set in .env
+      const organizationId = request.user?.organizationId ?? this.defaultOrgId;
       return {
-        organizationId: this.defaultOrgId,
+        organizationId,
         userId,
         mode: TenantMode.SINGLE,
         role: request.user?.role ?? 'admin',

@@ -11,7 +11,7 @@ export const KANBAN_COLUMNS: { id: LeadStatus; label: string }[] = [
 ];
 
 export const TIER_COLORS: Record<string, string> = {
-  HOT: 'bg-red-100 text-red-700',
-  WARM: 'bg-amber-100 text-amber-700',
-  COLD: 'bg-blue-100 text-blue-700',
+  HOT: 'bg-gold/10 text-gold',
+  WARM: 'bg-tangerine/10 text-tangerine',
+  COLD: 'bg-aqua/10 text-aqua',
 };

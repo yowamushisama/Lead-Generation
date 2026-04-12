@@ -73,7 +73,7 @@ export function CommandCenter() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-display text-xl font-700 text-ink">Command Center</h1>
-          <p className="mt-0.5 font-mono text-[11px] text-dusk">
+          <p className="mt-0.5 font-mono text-[11px] text-mist">
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             {' · '}
             Real-time overview
@@ -167,7 +167,7 @@ export function CommandCenter() {
           <Card className="animate-fade-in delay-200">
             <CardHeader>
               <CardTitle>Pipeline Flow</CardTitle>
-              <div className="flex items-center gap-1.5 font-mono text-[10px] text-dusk">
+              <div className="flex items-center gap-1.5 font-mono text-[10px] text-mist">
                 <Activity className="h-3 w-3 text-orchid" />
                 Live
               </div>
@@ -216,8 +216,8 @@ export function CommandCenter() {
             ) : hotLeads.length === 0 ? (
               <div className="flex items-center justify-center py-8 text-center">
                 <div>
-                  <Flame className="mx-auto mb-2 h-6 w-6 text-dusk" />
-                  <p className="font-mono text-[11px] text-dusk">No HOT leads yet</p>
+                  <Flame className="mx-auto mb-2 h-6 w-6 text-mist" />
+                  <p className="font-mono text-[11px] text-mist">No HOT leads yet</p>
                 </div>
               </div>
             ) : (
@@ -273,7 +273,7 @@ export function CommandCenter() {
                   const pct = dash.leads.total > 0 ? (count / dash.leads.total) * 100 : 0;
                   return (
                     <div key={tier} className="flex items-center gap-2">
-                      <span className="w-8 font-mono text-[9px] text-dusk">{tier}</span>
+                      <span className="w-8 font-mono text-[9px] text-mist">{tier}</span>
                       <div className="flex-1 rounded-full bg-ink/[0.06] h-1">
                         <div
                           className={
@@ -336,7 +336,7 @@ function PipelineFlowViz({ byStatus }: { byStatus?: Record<string, number> }) {
                     }}
                   />
                 </div>
-                <span className="font-mono text-[9px] text-dusk">{stage.label}</span>
+                <span className="font-mono text-[9px] text-mist">{stage.label}</span>
               </div>
 
               {/* Arrow connector */}
@@ -383,7 +383,7 @@ function AdapterStatusRow({
       <span className="flex-1 text-[12px] text-mist">{adapter.label}</span>
       <div className="flex items-center gap-1.5">
         <span className={active ? 'dot-live' : 'dot-idle'} />
-        <span className="font-mono text-[9px] text-dusk">{active ? 'LIVE' : 'OFF'}</span>
+        <span className="font-mono text-[9px] text-mist">{active ? 'LIVE' : 'OFF'}</span>
       </div>
     </div>
   );
@@ -398,13 +398,13 @@ function HotLeadRow({ lead, rank }: { lead: Parameters<typeof StatusBadge>[0] & 
 }; rank: number }) {
   return (
     <div className="row-hot flex items-center gap-3 rounded-r-lg px-3 py-2 hover:bg-ink/[0.03] transition-colors">
-      <span className="num w-4 shrink-0 font-mono text-[10px] text-dusk">{rank}</span>
+      <span className="num w-4 shrink-0 font-mono text-[10px] text-mist">{rank}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[12px] font-500 text-ink">
           {lead.company ?? lead.name ?? 'Unknown'}
         </p>
         {lead.role && (
-          <p className="font-mono text-[10px] text-dusk truncate">{lead.role}</p>
+          <p className="font-mono text-[10px] text-mist truncate">{lead.role}</p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">

@@ -62,7 +62,7 @@ export function AdapterStatsRow({
             </p>
 
             {adapter.lastRun && (
-              <p className="font-mono text-[9px] text-dusk mt-0.5">
+              <p className="font-mono text-[9px] text-mist mt-0.5">
                 {relativeTime(adapter.lastRun)}
               </p>
             )}

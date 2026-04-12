@@ -82,7 +82,7 @@ export function StatCard({
               </span>
             )}
             {subLabel && (
-              <span className="font-mono text-[11px] text-dusk">{subLabel}</span>
+              <span className="font-mono text-[11px] text-mist">{subLabel}</span>
             )}
           </div>
         </div>

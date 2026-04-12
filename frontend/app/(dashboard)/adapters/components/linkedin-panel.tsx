@@ -86,7 +86,7 @@ export function LinkedInDetailPanel() {
         </div>
         <div>
           <h2 className="font-display text-[14px] font-600 text-ink">LinkedIn Adapter</h2>
-          <p className="font-mono text-[10px] text-dusk">Playwright stealth scraping with anti-bot detection</p>
+          <p className="font-mono text-[10px] text-mist">Playwright stealth scraping with anti-bot detection</p>
         </div>
       </div>
 
@@ -100,7 +100,7 @@ export function LinkedInDetailPanel() {
               'rounded-md px-3 py-1.5 font-mono text-[10px] transition-colors border',
               activeTab === id
                 ? 'border-aqua/30 bg-aqua/10 text-aqua'
-                : 'border-ink/[0.06] text-dusk hover:text-mist',
+                : 'border-ink/[0.06] text-mist hover:text-ink',
             )}
           >
             {label}
@@ -121,7 +121,7 @@ export function LinkedInDetailPanel() {
                     'rounded-md px-2.5 py-1 font-mono text-[10px] border transition-colors',
                     searchMode === id
                       ? 'border-aqua/30 bg-aqua/10 text-aqua'
-                      : 'border-ink/[0.06] text-dusk hover:text-mist',
+                      : 'border-ink/[0.06] text-mist hover:text-ink',
                   )}
                 >
                   {label}
@@ -146,14 +146,14 @@ export function LinkedInDetailPanel() {
               onChange={(e) => setMinEngagement(Number(e.target.value))}
               className="w-full accent-[#4A9EF5]"
             />
-            <div className="flex justify-between font-mono text-[9px] text-dusk">
+            <div className="flex justify-between font-mono text-[9px] text-mist">
               <span>0 (any)</span><span>100 (viral)</span>
             </div>
           </FormField>
 
           <div className="flex items-center gap-2 rounded-lg border border-gold/15 bg-gold/[0.04] p-2.5">
             <Info className="h-3.5 w-3.5 shrink-0 text-gold" />
-            <p className="font-mono text-[10px] text-gold/80">
+            <p className="font-mono text-[10px] text-gold">
               Requires active LinkedIn session. Set LINKEDIN_EMAIL + LINKEDIN_PASSWORD in .env
             </p>
           </div>
@@ -173,7 +173,7 @@ export function LinkedInDetailPanel() {
                     'rounded-md px-2.5 py-1 font-mono text-[10px] border transition-colors',
                     seniority.includes(id)
                       ? 'border-orchid/30 bg-orchid/10 text-orchid'
-                      : 'border-ink/[0.06] text-dusk hover:text-mist',
+                      : 'border-ink/[0.06] text-mist hover:text-ink',
                   )}
                 >
                   {label}
@@ -192,7 +192,7 @@ export function LinkedInDetailPanel() {
                     'rounded-md px-3 py-1 font-mono text-[10px] border transition-colors',
                     connDegrees.includes(d)
                       ? 'border-aqua/30 bg-aqua/10 text-aqua'
-                      : 'border-ink/[0.06] text-dusk hover:text-mist',
+                      : 'border-ink/[0.06] text-mist hover:text-ink',
                   )}
                 >
                   {d}
@@ -211,7 +211,7 @@ export function LinkedInDetailPanel() {
                     'rounded-md px-2.5 py-1 font-mono text-[10px] border transition-colors',
                     companySizes.includes(s)
                       ? 'border-jade/30 bg-jade/10 text-jade'
-                      : 'border-ink/[0.06] text-dusk hover:text-mist',
+                      : 'border-ink/[0.06] text-mist hover:text-ink',
                   )}
                 >
                   {s}
@@ -241,7 +241,7 @@ export function LinkedInDetailPanel() {
               <span className="dot-idle" style={{ width: 8, height: 8 }} />
               <div>
                 <p className="font-mono text-[12px] text-mist">LINKEDIN_EMAIL</p>
-                <p className="font-mono text-[10px] text-dusk">
+                <p className="font-mono text-[10px] text-mist">
                   Not configured — add to .env to enable scraping
                 </p>
               </div>
@@ -262,11 +262,11 @@ export function LinkedInDetailPanel() {
                   <span className="font-mono text-[11px] text-mist">{label}</span>
                 </div>
                 {badge ? (
-                  <span className="rounded-md border border-dusk/20 bg-dusk/10 px-2 py-0.5 font-mono text-[10px] text-dusk">
+                  <span className="rounded-md border border-mist/20 bg-mist/10 px-2 py-0.5 font-mono text-[10px] text-mist">
                     {value}
                   </span>
                 ) : (
-                  <span className="font-mono text-[11px] text-dusk">{value}</span>
+                  <span className="font-mono text-[11px] text-mist">{value}</span>
                 )}
               </div>
             ))}
@@ -276,13 +276,13 @@ export function LinkedInDetailPanel() {
             <p className="section-label">Proxy Pool</p>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[11px] text-mist">Active proxies</span>
-              <span className="font-mono text-[11px] text-dusk">0 configured</span>
+              <span className="font-mono text-[11px] text-mist">0 configured</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[11px] text-mist">Rotation strategy</span>
-              <span className="font-mono text-[11px] text-dusk">On CAPTCHA detection</span>
+              <span className="font-mono text-[11px] text-mist">On CAPTCHA detection</span>
             </div>
-            <p className="font-mono text-[10px] text-dusk leading-relaxed">
+            <p className="font-mono text-[10px] text-mist leading-relaxed">
               Configure proxies via PROXY_LIST env var to enable automatic rotation.
             </p>
           </div>
@@ -301,19 +301,19 @@ export function LinkedInDetailPanel() {
           <FormField label={`Max Results per Keyword: ${maxPerKeyword}`}>
             <input type="range" min={10} max={200} step={5} value={maxPerKeyword}
               onChange={(e) => setMaxPerKeyword(Number(e.target.value))} className="w-full accent-[#4A9EF5]" />
-            <div className="flex justify-between font-mono text-[9px] text-dusk"><span>10</span><span>200</span></div>
+            <div className="flex justify-between font-mono text-[9px] text-mist"><span>10</span><span>200</span></div>
           </FormField>
 
           <FormField label={`Request Delay: ${requestDelay}ms`}>
             <input type="range" min={800} max={5000} step={100} value={requestDelay}
               onChange={(e) => setRequestDelay(Number(e.target.value))} className="w-full accent-[#F59E0B]" />
-            <div className="flex justify-between font-mono text-[9px] text-dusk"><span>800ms (fast)</span><span>5000ms (safe)</span></div>
+            <div className="flex justify-between font-mono text-[9px] text-mist"><span>800ms (fast)</span><span>5000ms (safe)</span></div>
           </FormField>
 
           <FormField label={`Max Total Results: ${maxTotal}`}>
             <input type="range" min={10} max={1000} step={10} value={maxTotal}
               onChange={(e) => setMaxTotal(Number(e.target.value))} className="w-full accent-[#4A9EF5]" />
-            <div className="flex justify-between font-mono text-[9px] text-dusk"><span>10</span><span>1,000</span></div>
+            <div className="flex justify-between font-mono text-[9px] text-mist"><span>10</span><span>1,000</span></div>
           </FormField>
 
           <FormField label="Run Schedule">
@@ -352,7 +352,7 @@ export function LinkedInDetailPanel() {
             }
           </button>
           {keywords.length === 0 && (
-            <p className="font-mono text-[10px] text-dusk">
+            <p className="font-mono text-[10px] text-mist">
               Add at least one keyword in Search Config to trigger scraping.
             </p>
           )}

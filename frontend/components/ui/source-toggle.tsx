@@ -35,7 +35,7 @@ export function SourceToggle({
               'font-mono text-[11px] font-500 uppercase tracking-wider',
               active
                 ? 'bg-aqua/10 text-aqua ring-1 ring-aqua/20'
-                : 'text-dusk hover:bg-ink/[0.04] hover:text-mist',
+                : 'text-mist hover:bg-ink/[0.04] hover:text-ink',
             )}
           >
             {tab.abbr}
@@ -43,7 +43,7 @@ export function SourceToggle({
               <span
                 className={cn(
                   'rounded-full px-1.5 py-0.5 text-[9px] font-600',
-                  active ? 'bg-aqua/20 text-aqua' : 'bg-ink/[0.06] text-dusk',
+                  active ? 'bg-aqua/20 text-aqua' : 'bg-ink/[0.06] text-mist',
                 )}
               >
                 {count}

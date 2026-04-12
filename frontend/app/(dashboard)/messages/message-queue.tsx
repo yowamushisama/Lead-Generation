@@ -73,7 +73,7 @@ export function MessageQueue() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-display text-xl font-700 text-ink">Message Queue</h1>
-          <p className="mt-0.5 font-mono text-[11px] text-dusk">{pendingMessages.length} pending approval</p>
+          <p className="mt-0.5 font-mono text-[11px] text-mist">{pendingMessages.length} pending approval</p>
         </div>
         {pendingMessages.length > 5 && (
           <div className="flex items-center gap-2 rounded-full border border-gold/20 bg-gold/5 px-3 py-1.5">
@@ -97,10 +97,10 @@ export function MessageQueue() {
                 </div>
               ) : pendingMessages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                  <MessageSquare className="h-8 w-8 text-dusk" />
+                  <MessageSquare className="h-8 w-8 text-mist" />
                   <div>
                     <p className="text-[13px] font-500 text-mist">Queue is clear</p>
-                    <p className="font-mono text-[11px] text-dusk">All messages processed</p>
+                    <p className="font-mono text-[11px] text-mist">All messages processed</p>
                   </div>
                 </div>
               ) : (
@@ -122,10 +122,10 @@ export function MessageQueue() {
                           <p className="truncate text-[12px] font-500 text-ink">
                             {msg.lead?.company ?? msg.lead?.name ?? 'Unknown Lead'}
                           </p>
-                          <span className="shrink-0 font-mono text-[9px] text-dusk">{relativeTime(msg.createdAt)}</span>
+                          <span className="shrink-0 font-mono text-[9px] text-mist">{relativeTime(msg.createdAt)}</span>
                         </div>
                         {msg.subject && <p className="font-mono text-[10px] text-mist truncate">{msg.subject}</p>}
-                        <p className="mt-0.5 line-clamp-2 text-[11px] text-dusk leading-relaxed">
+                        <p className="mt-0.5 line-clamp-2 text-[11px] text-mist leading-relaxed">
                           {msg.body.slice(0, 100)}…
                         </p>
                       </div>
@@ -142,9 +142,9 @@ export function MessageQueue() {
           {!selectedMsg ? (
             <Card className="flex h-full items-center justify-center">
               <div className="text-center">
-                <ChevronRight className="mx-auto mb-2 h-8 w-8 text-dusk" />
+                <ChevronRight className="mx-auto mb-2 h-8 w-8 text-mist" />
                 <p className="text-[13px] font-500 text-mist">Select a message to review</p>
-                <p className="font-mono text-[11px] text-dusk">Click any message from the list</p>
+                <p className="font-mono text-[11px] text-mist">Click any message from the list</p>
               </div>
             </Card>
           ) : (
@@ -156,7 +156,7 @@ export function MessageQueue() {
                     {selectedMsg.lead?.company ?? selectedMsg.lead?.name ?? 'Unknown'}
                   </p>
                   {selectedMsg.lead?.role && (
-                    <p className="font-mono text-[10px] text-dusk">{selectedMsg.lead.role}</p>
+                    <p className="font-mono text-[10px] text-mist">{selectedMsg.lead.role}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -242,7 +242,7 @@ export function MessageQueue() {
                             'rounded-full px-2.5 py-1 font-mono text-[10px] transition-colors border',
                             rejectReason === r
                               ? 'border-crimson/30 bg-crimson/10 text-crimson'
-                              : 'border-ink/[0.06] text-dusk hover:text-mist',
+                              : 'border-ink/[0.06] text-mist hover:text-ink',
                           )}
                         >
                           {r}
@@ -267,7 +267,7 @@ export function MessageQueue() {
                     onClick={() => { setIsEditing(!isEditing); setShowRejectForm(false); }}
                     className={cn(
                       'flex items-center gap-1.5 rounded-lg border px-3 py-2 font-mono text-[11px] transition-colors',
-                      isEditing ? 'border-aqua/30 bg-aqua/5 text-aqua' : 'border-ink/[0.06] text-dusk hover:text-mist',
+                      isEditing ? 'border-aqua/30 bg-aqua/5 text-aqua' : 'border-ink/[0.06] text-mist hover:text-ink',
                     )}
                   >
                     <Edit3 className="h-3.5 w-3.5" />
@@ -276,7 +276,7 @@ export function MessageQueue() {
                   {!showRejectForm && (
                     <button
                       onClick={() => { setShowRejectForm(true); setIsEditing(false); }}
-                      className="flex items-center gap-1.5 rounded-lg border border-ink/[0.06] px-3 py-2 font-mono text-[11px] text-dusk hover:border-crimson/20 hover:text-crimson transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg border border-ink/[0.06] px-3 py-2 font-mono text-[11px] text-mist hover:border-crimson/20 hover:text-crimson transition-colors"
                     >
                       <X className="h-3.5 w-3.5" />
                       Reject

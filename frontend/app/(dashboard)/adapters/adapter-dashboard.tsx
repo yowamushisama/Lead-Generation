@@ -30,7 +30,7 @@ export function AdapterDashboard() {
       {/* Page header */}
       <div>
         <h1 className="font-display text-xl font-700 text-ink">Adapters</h1>
-        <p className="mt-0.5 font-mono text-[11px] text-dusk">
+        <p className="mt-0.5 font-mono text-[11px] text-mist">
           Configure and trigger data source adapters
         </p>
       </div>

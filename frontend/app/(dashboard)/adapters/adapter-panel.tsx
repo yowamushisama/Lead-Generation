@@ -85,7 +85,7 @@ export function AdapterPanel() {
     <div className="space-y-5 animate-fade-in">
       <div>
         <h1 className="font-display text-xl font-700 text-ink">Adapters</h1>
-        <p className="mt-0.5 font-mono text-[11px] text-dusk">
+        <p className="mt-0.5 font-mono text-[11px] text-mist">
           Configure and trigger data source adapters
         </p>
       </div>
@@ -149,7 +149,7 @@ function AdapterCard({
               <span className={cn('font-mono text-[9px]', statusInfo.text)}>{statusInfo.label}</span>
             </div>
           </div>
-          <p className="font-mono text-[10px] text-dusk mt-0.5">
+          <p className="font-mono text-[10px] text-mist mt-0.5">
             {adapter.leadsIngested.toLocaleString()} leads · {adapter.errorRate}% err
           </p>
         </div>
@@ -227,14 +227,14 @@ function LinkedInConfig({ color }: { color: string }) {
           onChange={(e) => setMaxResults(Number(e.target.value))}
           className="w-full accent-[#4A9EF5]"
         />
-        <div className="flex justify-between font-mono text-[9px] text-dusk">
+        <div className="flex justify-between font-mono text-[9px] text-mist">
           <span>10</span><span>500</span>
         </div>
       </FormField>
 
       <div className="flex items-center gap-2 rounded-lg border border-gold/15 bg-gold/[0.04] p-2.5">
         <Info className="h-3.5 w-3.5 shrink-0 text-gold" />
-        <p className="font-mono text-[10px] text-gold/80">
+        <p className="font-mono text-[10px] text-gold">
           Requires active LinkedIn session. Set LINKEDIN_EMAIL + LINKEDIN_PASSWORD in .env
         </p>
       </div>

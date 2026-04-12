@@ -89,7 +89,7 @@ export function WebhookDetailPanel() {
         </div>
         <div>
           <h2 className="font-display text-[14px] font-600 text-ink">Webhook Adapter</h2>
-          <p className="font-mono text-[10px] text-dusk">Receive leads via HMAC-signed HTTP POST</p>
+          <p className="font-mono text-[10px] text-mist">Receive leads via HMAC-signed HTTP POST</p>
         </div>
       </div>
 
@@ -133,7 +133,7 @@ export function WebhookDetailPanel() {
                     'rounded-md px-2.5 py-1 font-mono text-[10px] border transition-colors',
                     format === id
                       ? 'border-gold/30 bg-gold/10 text-gold'
-                      : 'border-ink/[0.06] text-dusk hover:text-mist',
+                      : 'border-ink/[0.06] text-mist hover:text-ink',
                   )}
                 >
                   {label}
@@ -223,7 +223,7 @@ function DeliveryLog({ deliveries }: { deliveries: typeof MOCK_DELIVERIES }) {
             >
               {d.httpStatus}
             </span>
-            <span className="font-mono text-[10px] text-dusk w-14 text-right">
+            <span className="font-mono text-[10px] text-mist w-14 text-right">
               {d.leadCount} lead{d.leadCount !== 1 ? 's' : ''}
             </span>
           </div>
@@ -245,15 +245,15 @@ function FieldReferenceTable({ fields }: { fields: { field: string; aliases: str
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-ink/[0.06] bg-elevated">
-              <th className="px-3 py-1.5 font-mono text-[9px] text-dusk">Lead Field</th>
-              <th className="px-3 py-1.5 font-mono text-[9px] text-dusk">Accepted Names</th>
+              <th className="px-3 py-1.5 font-mono text-[9px] text-mist">Lead Field</th>
+              <th className="px-3 py-1.5 font-mono text-[9px] text-mist">Accepted Names</th>
             </tr>
           </thead>
           <tbody>
             {fields.map(({ field, aliases }) => (
               <tr key={field} className="border-b border-ink/[0.03]">
                 <td className="px-3 py-1.5 font-mono text-[10px] text-aqua">{field}</td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-dusk">{aliases}</td>
+                <td className="px-3 py-1.5 font-mono text-[10px] text-mist">{aliases}</td>
               </tr>
             ))}
           </tbody>

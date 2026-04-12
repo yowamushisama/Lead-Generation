@@ -36,7 +36,7 @@ export function GoogleMapsDetailPanel() {
         </div>
         <div>
           <h2 className="font-display text-[14px] font-600 text-ink">Google Maps Adapter</h2>
-          <p className="font-mono text-[10px] text-dusk">Discover local businesses via Google Places API</p>
+          <p className="font-mono text-[10px] text-mist">Discover local businesses via Google Places API</p>
         </div>
       </div>
 
@@ -66,7 +66,7 @@ export function GoogleMapsDetailPanel() {
             onChange={(e) => setMinRating(Number(e.target.value))}
             className="w-full accent-[#10B981]"
           />
-          <div className="flex justify-between font-mono text-[9px] text-dusk">
+          <div className="flex justify-between font-mono text-[9px] text-mist">
             <span>1★</span><span>5★</span>
           </div>
         </FormField>
@@ -110,7 +110,7 @@ export function GoogleMapsDetailPanel() {
       {/* API key notice */}
       <div className="flex items-center gap-2 rounded-lg border border-gold/15 bg-gold/[0.04] p-2.5">
         <Info className="h-3.5 w-3.5 shrink-0 text-gold" />
-        <p className="font-mono text-[10px] text-gold/80">
+        <p className="font-mono text-[10px] text-gold">
           Requires GOOGLE_MAPS_API_KEY in .env. 2-second delay between pages (API requirement).
         </p>
       </div>
@@ -129,7 +129,7 @@ export function GoogleMapsDetailPanel() {
       </button>
 
       {!canTrigger && (
-        <p className="font-mono text-[10px] text-dusk">
+        <p className="font-mono text-[10px] text-mist">
           Add at least one location and one business type to trigger discovery.
         </p>
       )}
