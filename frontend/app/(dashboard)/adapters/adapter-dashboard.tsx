@@ -5,9 +5,9 @@ import type { AdapterId } from './components/adapter-types';
 import { ADAPTERS } from './components/adapter-types';
 import { AdapterStatsRow } from './components/adapter-stats-row';
 import { AdapterSelector } from './components/adapter-selector';
-import { CSVDetailPanel } from './components/csv-panel';
-import { LinkedInDetailPanel } from './components/linkedin-panel';
-import { GoogleMapsDetailPanel } from './components/google-maps-panel';
+import { CSVDetailPanel } from './components/csv/csv-panel';
+import { LinkedInDetailPanel } from './components/linkedin/linkedin-panel';
+import { GoogleMapsDetailPanel } from './components/google-maps/google-maps-panel';
 import { WebhookDetailPanel } from './components/webhook-panel';
 
 // ── Detail panel router ────────────────────────────────────────────────────────

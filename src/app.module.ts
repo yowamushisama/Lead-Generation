@@ -17,6 +17,7 @@ import { ICPModule } from './icp/icp.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { JobsModule } from './jobs/jobs.module';
+import { PromptConfigModule } from './prompt-config/prompt-config.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { JobsModule } from './jobs/jobs.module';
     AnalyticsModule,
     ComplianceModule,
     JobsModule,
+    PromptConfigModule,
     HealthModule,
   ],
 })

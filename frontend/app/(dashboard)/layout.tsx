@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Megaphone,
   Target,
+  Sparkles,
   BarChart3,
   Activity,
   ShieldCheck,
@@ -45,9 +46,10 @@ const NAV_SECTIONS = [
   {
     label: 'CONFIGURATION',
     items: [
-      { href: '/campaigns', label: 'Campaigns',   icon: Megaphone },
-      { href: '/icp',       label: 'ICP Builder', icon: Target },
-      { href: '/settings',  label: 'AI Settings', icon: Settings },
+      { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone },
+      { href: '/prompt-configs', label: 'Prompt Library', icon: Sparkles },
+      { href: '/icp',            label: 'ICP Builder',    icon: Target },
+      { href: '/settings',       label: 'AI Settings',    icon: Settings },
     ],
   },
   {

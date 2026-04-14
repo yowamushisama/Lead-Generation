@@ -3,10 +3,8 @@ import { IPipelineStage } from '../../common/interfaces/pipeline-stage.interface
 import { TenantContext } from '../../common/interfaces/tenant-context.interface';
 import { AIProviderFactory } from '../../ai/ai-provider.factory';
 import { PersonalizationResult } from '../../common/types/personalization.types';
-import {
-  PERSONALIZATION_SYSTEM_PROMPT,
-  buildPersonalizationPrompt,
-} from '../../ai/prompts/personalization.prompt';
+import { buildPersonalizationPrompt } from '../../ai/prompts/personalization.prompt';
+import { PromptConfigService } from '../../prompt-config/prompt-config.service';
 
 export interface PersonalizerInput {
   leadId: string;
@@ -19,6 +17,7 @@ export interface PersonalizerInput {
   serviceOffering: string;
   uniqueValue: string;
   personalizationModel?: string;
+  campaignId?: string;
 }
 
 export interface PersonalizerOutput {
@@ -32,10 +31,30 @@ export class PersonalizerStage implements IPipelineStage<PersonalizerInput, Pers
   readonly stageName = 'personalizer';
   private readonly logger = new Logger(PersonalizerStage.name);
 
-  constructor(private readonly aiFactory: AIProviderFactory) {}
+  constructor(
+    private readonly aiFactory: AIProviderFactory,
+    private readonly promptConfigService: PromptConfigService,
+  ) {}
 
   async process(input: PersonalizerInput, context: TenantContext): Promise<PersonalizerOutput> {
     const provider = this.aiFactory.getPersonalizationProvider(input.personalizationModel);
+
+    const promptConfig = input.campaignId
+      ? await this.promptConfigService.findEffectiveForCampaign(context, input.campaignId)
+      : null;
+
+    const positioningContext = promptConfig
+      ? {
+          companyDescription: promptConfig.companyDescription ?? undefined,
+          coreOffer: promptConfig.coreOffer ?? undefined,
+          targetPersona: promptConfig.targetPersona ?? undefined,
+          mainPainSolved: promptConfig.mainPainSolved ?? undefined,
+          mainOutcomePromised: promptConfig.mainOutcomePromised ?? undefined,
+          proofPoints: (promptConfig.proofPoints as string[]) ?? undefined,
+        }
+      : undefined;
+
+    const systemPrompt = this.promptConfigService.buildEffectivePersonalizationSystemPrompt(promptConfig);
 
     const prompt = buildPersonalizationPrompt(
       {
@@ -48,10 +67,11 @@ export class PersonalizerStage implements IPipelineStage<PersonalizerInput, Pers
       },
       input.serviceOffering,
       input.uniqueValue,
+      positioningContext,
     );
 
     const result = await provider.complete(prompt, {
-      systemPrompt: PERSONALIZATION_SYSTEM_PROMPT,
+      systemPrompt,
       temperature: 0.4,
       maxTokens: 1024,
     });

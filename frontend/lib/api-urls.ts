@@ -56,8 +56,10 @@ export const API_URLS = {
     performance: (id: string) => `${V1}/campaigns/${id}/performance`,
     create:      `${V1}/campaigns`,
     update:      (id: string) => `${V1}/campaigns/${id}`,
+    launch:      (id: string) => `${V1}/campaigns/${id}/launch`,
     pause:       (id: string) => `${V1}/campaigns/${id}/pause`,
     resume:      (id: string) => `${V1}/campaigns/${id}/resume`,
+    archive:     (id: string) => `${V1}/campaigns/${id}/archive`,
   },
 
   // ── ICP ─────────────────────────────────────────────────────────────────────
@@ -99,6 +101,19 @@ export const API_URLS = {
     stats:  `${V1}/organizations/me/stats`,
     update: `${V1}/organizations/me`,
     getById:(id: string) => `${V1}/organizations/${id}`,
+  },
+
+  // ── Prompt Configs (library) ─────────────────────────────────────────────────
+  promptConfigs: {
+    list:    `${V1}/prompt-configs`,
+    create:  `${V1}/prompt-configs`,
+    get:     (id: string) => `${V1}/prompt-configs/${id}`,
+    update:  (id: string) => `${V1}/prompt-configs/${id}`,
+    archive: (id: string) => `${V1}/prompt-configs/${id}/archive`,
+    clone:   (id: string) => `${V1}/prompt-configs/${id}/clone`,
+    history: (id: string) => `${V1}/prompt-configs/${id}/history`,
+    restore: (id: string, version: number) => `${V1}/prompt-configs/${id}/restore/${version}`,
+    preview: (id: string) => `${V1}/prompt-configs/${id}/preview`,
   },
 
   // ── Compliance ───────────────────────────────────────────────────────────────

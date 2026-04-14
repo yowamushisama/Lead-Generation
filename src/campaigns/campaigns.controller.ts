@@ -126,10 +126,26 @@ export class CampaignsController {
     return ApiResponseDto.success(data as CampaignResponseDto, 'Campaign paused');
   }
 
+  @Patch(':id/launch')
+  @ApiOperation({ summary: 'Launch a draft campaign', description: 'Transitions a DRAFT campaign to ACTIVE. Only valid for DRAFT campaigns.' })
+  @ApiParam({ name: 'id', description: 'Campaign UUID' })
+  @ApiResponse({ status: 200, description: 'Campaign launched.', type: ApiResponseDto<CampaignResponseDto> })
+  @ApiResponse({ status: 403, description: 'Campaign is not in DRAFT status.' })
+  @ApiResponse({ status: 404, description: 'Campaign not found.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT.' })
+  async launch(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiResponseDto<CampaignResponseDto>> {
+    const data = await this.campaignsService.launch(tenant, id);
+    return ApiResponseDto.success(data as CampaignResponseDto, 'Campaign launched');
+  }
+
   @Patch(':id/resume')
-  @ApiOperation({ summary: 'Resume a campaign', description: 'Sets campaign status to ACTIVE and isActive to true.' })
+  @ApiOperation({ summary: 'Resume a paused campaign', description: 'Transitions a PAUSED campaign back to ACTIVE. Only valid for PAUSED campaigns.' })
   @ApiParam({ name: 'id', description: 'Campaign UUID' })
   @ApiResponse({ status: 200, description: 'Campaign resumed.', type: ApiResponseDto<CampaignResponseDto> })
+  @ApiResponse({ status: 403, description: 'Campaign is not in PAUSED status.' })
   @ApiResponse({ status: 404, description: 'Campaign not found.' })
   @ApiResponse({ status: 401, description: 'Missing or invalid JWT.' })
   async resume(
@@ -138,5 +154,19 @@ export class CampaignsController {
   ): Promise<ApiResponseDto<CampaignResponseDto>> {
     const data = await this.campaignsService.resume(tenant, id);
     return ApiResponseDto.success(data as CampaignResponseDto, 'Campaign resumed');
+  }
+
+  @Patch(':id/archive')
+  @ApiOperation({ summary: 'Archive a campaign', description: 'Sets campaign status to ARCHIVED and isActive to false. Archived campaigns are read-only.' })
+  @ApiParam({ name: 'id', description: 'Campaign UUID' })
+  @ApiResponse({ status: 200, description: 'Campaign archived.', type: ApiResponseDto<CampaignResponseDto> })
+  @ApiResponse({ status: 404, description: 'Campaign not found.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT.' })
+  async archive(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiResponseDto<CampaignResponseDto>> {
+    const data = await this.campaignsService.archive(tenant, id);
+    return ApiResponseDto.success(data as CampaignResponseDto, 'Campaign archived');
   }
 }

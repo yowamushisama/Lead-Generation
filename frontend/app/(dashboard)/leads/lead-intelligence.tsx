@@ -291,20 +291,15 @@ export function LeadIntelligence() {
                     </tr>
                   )
                   : filtered.map((lead) => (
-                    <>
-                      <LeadRow
-                        key={lead.id}
-                        lead={lead}
-                        selected={selected.has(lead.id)}
-                        expanded={expandedId === lead.id}
-                        onSelect={() => toggleSelect(lead.id)}
-                        onExpand={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
-                        onStatusChange={(status) => updateMutation.mutate({ id: lead.id, status })}
-                      />
-                      {expandedId === lead.id && (
-                        <LeadExpandedRow key={`${lead.id}-exp`} lead={lead} />
-                      )}
-                    </>
+                    <LeadRowGroup
+                      key={lead.id}
+                      lead={lead}
+                      selected={selected.has(lead.id)}
+                      expanded={expandedId === lead.id}
+                      onSelect={() => toggleSelect(lead.id)}
+                      onExpand={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
+                      onStatusChange={(status) => updateMutation.mutate({ id: lead.id, status })}
+                    />
                   ))}
             </tbody>
           </table>
@@ -377,6 +372,36 @@ function SortTh({
         )}
       </div>
     </th>
+  );
+}
+
+function LeadRowGroup({
+  lead,
+  selected,
+  expanded,
+  onSelect,
+  onExpand,
+  onStatusChange,
+}: {
+  lead: Lead;
+  selected: boolean;
+  expanded: boolean;
+  onSelect: () => void;
+  onExpand: () => void;
+  onStatusChange: (s: LeadStatus) => void;
+}) {
+  return (
+    <>
+      <LeadRow
+        lead={lead}
+        selected={selected}
+        expanded={expanded}
+        onSelect={onSelect}
+        onExpand={onExpand}
+        onStatusChange={onStatusChange}
+      />
+      {expanded && <LeadExpandedRow lead={lead} />}
+    </>
   );
 }
 

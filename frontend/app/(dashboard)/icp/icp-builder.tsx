@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Target, Check, X, ChevronDown, ChevronRight, Edit } from 'lucide-react';
+import { Plus, Target, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { icp as icpApi } from '@/lib/api-client';
 import type { ICPProfile, ICPConfig } from '@/models';
 import { Card } from '@/components/ui/card';
+import { TagInput } from '@/components/ui/tag-input';
 import { cn } from '@/lib/utils';
 
 const SCORING_FACTORS = [
@@ -71,8 +72,16 @@ export function ICPBuilder() {
 
       {/* Create panel */}
       {showCreate && (
-        <Card className="border-aqua/15">
-          <h2 className="font-display text-[14px] font-600 text-ink mb-4">New ICP Profile</h2>
+        <Card className="border-aqua/15 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-[14px] font-600 text-ink">New ICP Profile</h2>
+            <button
+              onClick={() => setShowCreate(false)}
+              className="flex items-center justify-center h-7 w-7 rounded-lg border border-ink/[0.08] bg-elevated text-dusk hover:border-ink/20 hover:text-mist transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-3">
               <TagInput label="Profile Name" value={newName} onChange={(v) => setNewName(v)} placeholder="Enterprise SaaS CTOs" single />
@@ -278,67 +287,3 @@ function ICPProfileCard({
   );
 }
 
-// ── Tag input component ────────────────────────────────────────────────────────
-
-function TagInputSingle({ label, value, onChange, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="section-label mb-1.5 block">{label}</label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-ink/[0.06] bg-elevated px-3 py-2 font-mono text-[12px] text-ink focus:border-aqua/30 focus:outline-none"
-        placeholder={placeholder}
-      />
-    </div>
-  );
-}
-
-function TagInputMulti({ label, tags, onChange, placeholder }: {
-  label: string; tags: string[]; onChange: (v: string[]) => void; placeholder?: string;
-}) {
-  const [input, setInput] = useState('');
-
-  const addTag = () => {
-    if (!input.trim()) return;
-    onChange([...tags, input.trim()]);
-    setInput('');
-  };
-
-  return (
-    <div>
-      <label className="section-label mb-1.5 block">{label}</label>
-      <div className="rounded-lg border border-ink/[0.06] bg-elevated p-2 min-h-[60px]">
-        <div className="flex flex-wrap gap-1 mb-1.5">
-          {tags.map((tag) => (
-            <span key={tag} className="flex items-center gap-1 rounded-md bg-aqua/10 px-2 py-0.5 font-mono text-[10px] text-aqua">
-              {tag}
-              <button onClick={() => onChange(tags.filter((t) => t !== tag))}>
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); } }}
-          className="w-full bg-transparent font-mono text-[11px] text-ink placeholder:text-mist/60 focus:outline-none"
-          placeholder={placeholder}
-        />
-      </div>
-    </div>
-  );
-}
-
-function TagInput(props:
-  | { label: string; value: string; onChange: (v: string) => void; placeholder?: string; single: true }
-  | { label: string; tags: string[]; onChange: (v: string[]) => void; placeholder?: string; single?: false }
-) {
-  if (props.single) {
-    return <TagInputSingle label={props.label} value={props.value} onChange={props.onChange} placeholder={props.placeholder} />;
-  }
-  return <TagInputMulti label={props.label} tags={props.tags} onChange={props.onChange} placeholder={props.placeholder} />;
-}

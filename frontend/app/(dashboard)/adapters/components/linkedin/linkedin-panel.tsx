@@ -5,40 +5,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Link2, Info, ShieldAlert, Clock, Globe, Zap, Play, RefreshCw } from 'lucide-react';
 import { campaigns as campaignsApi } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { FormField, TagInputMulti, Toggle } from './adapter-ui';
-
-// ── LinkedIn-specific types & constants ────────────────────────────────────────
-
-type LinkedInTab     = 'search' | 'targeting' | 'session' | 'advanced';
-type SearchMode      = 'posts_by_keyword' | 'my_connections' | 'company_followers' | 'job_posters';
-type SeniorityLevel  = 'c_suite' | 'vp' | 'director' | 'manager' | 'ic';
-type ConnectionDegree = '1st' | '2nd' | '3rd';
-type CompanySize     = '1-10' | '11-50' | '51-200' | '201-1000' | '1000+';
-
-const LI_TABS: { id: LinkedInTab; label: string }[] = [
-  { id: 'search',    label: 'Search Config' },
-  { id: 'targeting', label: 'Targeting' },
-  { id: 'session',   label: 'Session & Proxy' },
-  { id: 'advanced',  label: 'Advanced' },
-];
-
-const SEARCH_MODES: { id: SearchMode; label: string }[] = [
-  { id: 'posts_by_keyword',  label: 'Posts by Keyword' },
-  { id: 'my_connections',    label: 'My Connections' },
-  { id: 'company_followers', label: 'Company Followers' },
-  { id: 'job_posters',       label: 'Job Posters' },
-];
-
-const SENIORITY_LEVELS: { id: SeniorityLevel; label: string }[] = [
-  { id: 'c_suite',  label: 'C-Suite' },
-  { id: 'vp',       label: 'VP' },
-  { id: 'director', label: 'Director' },
-  { id: 'manager',  label: 'Manager' },
-  { id: 'ic',       label: 'Individual Contributor' },
-];
-
-const COMPANY_SIZES: CompanySize[]      = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
-const CONNECTION_DEGREES: ConnectionDegree[] = ['1st', '2nd', '3rd'];
+import { FormField, TagInputMulti, Toggle } from '../adapter-ui';
+import {
+  LinkedInTab, SearchMode, SeniorityLevel, ConnectionDegree, CompanySize,
+  LI_COLOR, LI_TABS, SEARCH_MODES, SENIORITY_LEVELS, COMPANY_SIZES, CONNECTION_DEGREES,
+} from './constants';
 
 function toggleItem<T>(arr: T[], item: T, setArr: (v: T[]) => void) {
   setArr(arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item]);
@@ -81,7 +52,7 @@ export function LinkedInDetailPanel() {
     <div className="space-y-4">
       {/* Panel header */}
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: '#4A9EF515', color: '#4A9EF5' }}>
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: `${LI_COLOR}15`, color: LI_COLOR }}>
           <Link2 className="h-4 w-4" />
         </div>
         <div>
@@ -344,7 +315,7 @@ export function LinkedInDetailPanel() {
             onClick={() => { setRunning(true); setTimeout(() => setRunning(false), 3000); }}
             disabled={running || keywords.length === 0}
             className="flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-[11px] font-500 transition-all disabled:opacity-60"
-            style={{ background: '#4A9EF520', color: '#4A9EF5', border: '1px solid #4A9EF530' }}
+            style={{ background: `${LI_COLOR}20`, color: LI_COLOR, border: `1px solid ${LI_COLOR}30` }}
           >
             {running
               ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Scraping…</>

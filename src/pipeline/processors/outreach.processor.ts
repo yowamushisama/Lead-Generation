@@ -66,6 +66,8 @@ export class OutreachProcessor extends WorkerHost {
             body: msg.body,
             spamScore: msg.spamScore,
             status: msg.isApproved ? MessageStatus.PENDING_APPROVAL : MessageStatus.REJECTED,
+            promptConfigId: output.promptConfigId,
+            promptVersion: output.promptVersion,
             generatedAt: new Date(),
           },
         });

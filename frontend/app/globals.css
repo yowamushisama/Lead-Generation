@@ -14,7 +14,7 @@
   /* Accent palette */
   --color-gold:       #F59E0B;
   --color-aqua:       #06B6D4;
-  --color-orchid:     #7C3AED;
+  --color-orchid:     #A78BFA;
   --color-jade:       #10B981;
   --color-crimson:    #EF4444;
   --color-tangerine:  #F97316;
@@ -70,7 +70,7 @@ body::before {
   left: -200px;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle at center, rgba(124, 58, 237, 0.04) 0%, transparent 70%);
+  background: radial-gradient(circle at center, rgba(167, 139, 250, 0.04) 0%, transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -202,7 +202,7 @@ code, pre, .font-mono {
   /* Glow effects */
   .glow-gold   { box-shadow: 0 0 16px rgba(245, 158, 11, 0.2),  0 0 40px rgba(245, 158, 11, 0.05); }
   .glow-aqua   { box-shadow: 0 0 16px rgba(6, 182, 212, 0.2),   0 0 40px rgba(6, 182, 212, 0.05); }
-  .glow-orchid { box-shadow: 0 0 16px rgba(124, 58, 237, 0.2),  0 0 40px rgba(124, 58, 237, 0.05); }
+  .glow-orchid { box-shadow: 0 0 16px rgba(167, 139, 250, 0.2),  0 0 40px rgba(167, 139, 250, 0.05); }
   .glow-jade   { box-shadow: 0 0 16px rgba(16, 185, 129, 0.2),  0 0 40px rgba(16, 185, 129, 0.05); }
   .glow-crimson { box-shadow: 0 0 16px rgba(239, 68, 68, 0.2),  0 0 40px rgba(239, 68, 68, 0.05); }
 

@@ -26,6 +26,7 @@ model Organization {
   leads           Lead[]
   campaigns       Campaign[]
   icpProfiles     ICPProfile[]
+  promptConfigs   PromptConfig[]
   messages        Message[]
   conversations   Conversation[]
   analyticsEvents AnalyticsEvent[]
@@ -129,6 +130,7 @@ model Message {
   spamScore       Float?
   uniquenessScore Float?
   burntPatterns   Json?
+  promptConfigId  String?
   promptVersion   String?
   aiModel         String?
   aiTokensUsed    Int?
@@ -182,6 +184,9 @@ model Campaign {
   targetIndustries Json?
   scoringWeights  Json?
   positioningPrompt String?
+  promptConfigId  String?
+  promptConfig    PromptConfig? @relation(fields: [organizationId, promptConfigId], references: [organizationId, id])
+  promptOverrides Json?
   leadsGenerated  Int       @default(0)
   messagesSent    Int       @default(0)
   replies         Int       @default(0)
@@ -194,6 +199,52 @@ model Campaign {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   @@index([organizationId, status])
+  @@index([promptConfigId])
+}
+
+model PromptConfig {
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  campaigns       Campaign[]
+
+  // Library metadata
+  name            String
+  description     String?
+  status          String  @default("active")
+
+  // Positioning
+  companyDescription   String?
+  coreOffer            String?
+  targetPersona        String?
+  mainPainSolved       String?
+  mainOutcomePromised  String?
+  proofPoints          Json?
+
+  // Voice & CTA
+  preferredTone             String  @default("professional")
+  customToneInstructions    String?
+  ctaStyle                  String  @default("reply_question")
+  customCta                 String?
+
+  // Guardrails
+  forbiddenPhrases  Json?
+  forbiddenClaims   Json?
+  complianceNotes   String?
+
+  // System prompt overrides (replaces base prompts entirely)
+  personalizationPromptOverride  String?
+  outreachPromptOverride         String?
+
+  // Versioning
+  version  Int   @default(1)
+  history  Json?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@unique([organizationId, id])
 }
 
 model ICPProfile {

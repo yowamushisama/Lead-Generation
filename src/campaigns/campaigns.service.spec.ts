@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { CampaignRepository } from '../database/repositories/campaign.repository';
 import { LeadRepository } from '../database/repositories/lead.repository';
 import { MessageRepository } from '../database/repositories/message.repository';
+import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
 
 const mockCampaignRepository = {
   create: jest.fn(),
@@ -21,6 +22,21 @@ const mockMessageRepository = {
   countByStatus: jest.fn(),
 };
 
+const icpRow = {
+  id: 'icp-1',
+  organizationId: 'org-1',
+  name: 'Default ICP',
+  buyerSignals: ['AI', 'automation'],
+  urgencySignals: ['hiring', 'fundraising'],
+  targetLocations: ['United States'],
+  targetIndustries: ['SaaS'],
+  config: null,
+};
+
+const mockIcpProfileRepository = {
+  findFirst: jest.fn(),
+};
+
 const tenant = { organizationId: 'org-1', userId: 'user-1', role: 'admin' };
 
 const campaignRow = {
@@ -28,7 +44,7 @@ const campaignRow = {
   organizationId: 'org-1',
   name: 'Q2',
   description: null,
-  icpProfileId: null,
+  icpProfileId: 'icp-1',
   status: 'ACTIVE',
   isActive: true,
   settings: null,
@@ -60,6 +76,7 @@ describe('CampaignsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockIcpProfileRepository.findFirst.mockResolvedValue(icpRow);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -67,6 +84,7 @@ describe('CampaignsService', () => {
         { provide: CampaignRepository, useValue: mockCampaignRepository },
         { provide: LeadRepository, useValue: mockLeadRepository },
         { provide: MessageRepository, useValue: mockMessageRepository },
+        { provide: IcpProfileRepository, useValue: mockIcpProfileRepository },
       ],
     }).compile();
 
@@ -87,14 +105,26 @@ describe('CampaignsService', () => {
 
   describe('create', () => {
     it('creates a campaign and returns it with metrics', async () => {
+      mockIcpProfileRepository.findFirst.mockResolvedValue(icpRow);
       mockCampaignRepository.create.mockResolvedValue({ ...campaignRow });
       setupFindOneSuccess();
 
-      const result = await service.create(tenant as any, { name: 'Q2' } as any);
+      const result = await service.create(tenant as any, { name: 'Q2', icpProfileId: 'icp-1' } as any);
 
       expect(result.leadsGenerated).toBe(5);
       expect(result.messagesSent).toBe(12);
       expect(result.replies).toBe(2);
+      expect(mockIcpProfileRepository.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'icp-1', organizationId: 'org-1' } }),
+      );
+    });
+
+    it('throws NotFoundException when ICP profile does not exist', async () => {
+      mockIcpProfileRepository.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(tenant as any, { name: 'Q2', icpProfileId: 'missing-icp' } as any),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -162,6 +192,35 @@ describe('CampaignsService', () => {
     });
   });
 
+  // ── launch ─────────────────────────────────────────────────────────────────
+
+  describe('launch', () => {
+    it('transitions DRAFT to ACTIVE and returns updated campaign', async () => {
+      const draft  = { ...campaignRow, status: 'DRAFT', isActive: false, _count: { leads: 0, messages: 0 } };
+      const active = { ...campaignRow, status: 'ACTIVE', isActive: true, _count: { leads: 0, messages: 0 } };
+      mockCampaignRepository.findFirst
+        .mockResolvedValueOnce(draft)   // guard findOne
+        .mockResolvedValueOnce(active); // re-fetch after update
+      mockCampaignRepository.update.mockResolvedValue(active);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
+
+      const result = await service.launch(tenant as any, 'camp-1');
+
+      expect(result.status).toBe('ACTIVE');
+      expect(result.isActive).toBe(true);
+      expect(mockCampaignRepository.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'ACTIVE', isActive: true } }),
+      );
+    });
+
+    it('throws ForbiddenException when launching a non-DRAFT campaign', async () => {
+      mockCampaignRepository.findFirst.mockResolvedValueOnce(campaignRow); // status ACTIVE
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
+
+      await expect(service.launch(tenant as any, 'camp-1')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   // ── pause ──────────────────────────────────────────────────────────────────
 
   describe('pause', () => {
@@ -187,10 +246,11 @@ describe('CampaignsService', () => {
 
   describe('resume', () => {
     it('sets status ACTIVE and returns updated campaign', async () => {
-      const active = { ...campaignRow, status: 'ACTIVE', isActive: true };
+      const paused = { ...campaignRow, status: 'PAUSED', isActive: false, _count: { leads: 5, messages: 12 } };
+      const active = { ...campaignRow, status: 'ACTIVE', isActive: true, _count: { leads: 5, messages: 12 } };
       mockCampaignRepository.findFirst
-        .mockResolvedValueOnce(campaignRow)
-        .mockResolvedValueOnce(active);
+        .mockResolvedValueOnce(paused)   // first findOne (guard check)
+        .mockResolvedValueOnce(active);  // re-fetch after update
       mockCampaignRepository.update.mockResolvedValue(active);
       mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
 
@@ -198,6 +258,28 @@ describe('CampaignsService', () => {
 
       expect(result.status).toBe('ACTIVE');
       expect(result.isActive).toBe(true);
+    });
+
+    it('throws ForbiddenException when resuming an archived campaign', async () => {
+      const archived = { ...campaignRow, status: 'ARCHIVED', isActive: false, _count: { leads: 0, messages: 0 } };
+      mockCampaignRepository.findFirst.mockResolvedValueOnce(archived);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
+
+      await expect(service.resume(tenant as any, 'camp-1')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ── archive enforcement ────────────────────────────────────────────────────
+
+  describe('update', () => {
+    it('throws ForbiddenException when updating an archived campaign', async () => {
+      const archived = { ...campaignRow, status: 'ARCHIVED', isActive: false, _count: { leads: 0, messages: 0 } };
+      mockCampaignRepository.findFirst.mockResolvedValueOnce(archived);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
+
+      await expect(
+        service.update(tenant as any, 'camp-1', { name: 'New Name' }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 

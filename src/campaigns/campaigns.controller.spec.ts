@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CampaignsController } from './campaigns.controller';
 import { CampaignsService } from './campaigns.service';
 import { JwtAuthGuard } from '../common/guards/auth.guard';
@@ -38,8 +38,10 @@ const mockCampaignsService = {
   findOne: jest.fn(),
   getPerformance: jest.fn(),
   update: jest.fn(),
+  launch: jest.fn(),
   pause: jest.fn(),
   resume: jest.fn(),
+  archive: jest.fn(),
 };
 
 describe('CampaignsController', () => {
@@ -120,6 +122,25 @@ describe('CampaignsController', () => {
     });
   });
 
+  describe('launch', () => {
+    it('returns launched (ACTIVE) campaign from DRAFT', async () => {
+      mockCampaignsService.launch.mockResolvedValue({ ...campaign, status: 'ACTIVE', isActive: true });
+
+      const res = await controller.launch(tenant as any, 'camp-1');
+
+      expect((res.data as any).status).toBe('ACTIVE');
+      expect((res.data as any).isActive).toBe(true);
+    });
+
+    it('propagates ForbiddenException when campaign is not DRAFT', async () => {
+      mockCampaignsService.launch.mockRejectedValue(
+        new ForbiddenException('Cannot launch a campaign with status ACTIVE'),
+      );
+
+      await expect(controller.launch(tenant as any, 'camp-1')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe('pause', () => {
     it('returns paused campaign', async () => {
       mockCampaignsService.pause.mockResolvedValue({ ...campaign, status: 'PAUSED', isActive: false });
@@ -139,6 +160,50 @@ describe('CampaignsController', () => {
 
       expect((res.data as any).status).toBe('ACTIVE');
       expect((res.data as any).isActive).toBe(true);
+    });
+  });
+
+  describe('archive', () => {
+    it('returns archived campaign', async () => {
+      mockCampaignsService.archive.mockResolvedValue({ ...campaign, status: 'ARCHIVED', isActive: false });
+
+      const res = await controller.archive(tenant as any, 'camp-1');
+
+      expect((res.data as any).status).toBe('ARCHIVED');
+      expect((res.data as any).isActive).toBe(false);
+    });
+  });
+
+  describe('update on archived campaign', () => {
+    it('propagates ForbiddenException when service throws', async () => {
+      mockCampaignsService.update.mockRejectedValue(
+        new ForbiddenException('Archived campaigns are read-only and cannot be modified'),
+      );
+
+      await expect(controller.update(tenant as any, 'camp-1', { name: 'New Name' }))
+        .rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('resume on archived campaign', () => {
+    it('propagates ForbiddenException when service throws', async () => {
+      mockCampaignsService.resume.mockRejectedValue(
+        new ForbiddenException('Cannot resume a campaign with status ARCHIVED'),
+      );
+
+      await expect(controller.resume(tenant as any, 'camp-1'))
+        .rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('pause on non-active campaign', () => {
+    it('propagates ForbiddenException when service throws', async () => {
+      mockCampaignsService.pause.mockRejectedValue(
+        new ForbiddenException('Cannot pause a campaign with status PAUSED'),
+      );
+
+      await expect(controller.pause(tenant as any, 'camp-1'))
+        .rejects.toThrow(ForbiddenException);
     });
   });
 });

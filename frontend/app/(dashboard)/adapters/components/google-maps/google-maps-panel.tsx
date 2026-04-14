@@ -4,16 +4,17 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Map, Info, Play, RefreshCw } from 'lucide-react';
 import { campaigns as campaignsApi } from '@/lib/api-client';
-import { FormField, TagInputMulti } from './adapter-ui';
+import { FormField, TagInputMulti } from '../adapter-ui';
+import { GOOGLE_MAPS_COLOR, GOOGLE_MAPS_DEFAULTS } from './constants';
 
 // ── GoogleMapsDetailPanel ──────────────────────────────────────────────────────
 
 export function GoogleMapsDetailPanel() {
   const [locations,    setLocations]  = useState<string[]>([]);
   const [bizTypes,     setBizTypes]   = useState<string[]>([]);
-  const [minRating,    setMinRating]  = useState(3.5);
-  const [minReviews,   setMinReviews] = useState(10);
-  const [maxResults,   setMaxResults] = useState(50);
+  const [minRating,    setMinRating]  = useState(GOOGLE_MAPS_DEFAULTS.minRating);
+  const [minReviews,   setMinReviews] = useState(GOOGLE_MAPS_DEFAULTS.minReviews);
+  const [maxResults,   setMaxResults] = useState(GOOGLE_MAPS_DEFAULTS.maxResults);
   const [campaignId,   setCampaign]   = useState('');
   const [running,      setRunning]    = useState(false);
 
@@ -30,7 +31,7 @@ export function GoogleMapsDetailPanel() {
       <div className="flex items-center gap-3">
         <div
           className="flex h-8 w-8 items-center justify-center rounded-lg"
-          style={{ background: '#10B98115', color: '#10B981' }}
+          style={{ background: `${GOOGLE_MAPS_COLOR}15`, color: GOOGLE_MAPS_COLOR }}
         >
           <Map className="h-4 w-4" />
         </div>
@@ -120,7 +121,7 @@ export function GoogleMapsDetailPanel() {
         onClick={() => { setRunning(true); setTimeout(() => setRunning(false), 3000); }}
         disabled={running || !canTrigger}
         className="flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-[11px] font-500 transition-all disabled:opacity-60"
-        style={{ background: '#10B98120', color: '#10B981', border: '1px solid #10B98130' }}
+        style={{ background: `${GOOGLE_MAPS_COLOR}20`, color: GOOGLE_MAPS_COLOR, border: `1px solid ${GOOGLE_MAPS_COLOR}30` }}
       >
         {running
           ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Discovering…</>

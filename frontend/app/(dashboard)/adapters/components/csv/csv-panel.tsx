@@ -6,9 +6,9 @@ import { FileSpreadsheet, Upload, X, RefreshCw, CheckCircle, AlertCircle } from 
 import * as XLSX from 'xlsx';
 import { campaigns as campaignsApi, leads as leadsApi } from '@/lib/api-client';
 import { cn, relativeTime } from '@/lib/utils';
-import { FormField, TagInputMulti, Toggle } from './adapter-ui';
-import { ColumnMapping, LEAD_FIELDS, MOCK_IMPORT_HISTORY } from './csv/constants';
-import { parseCsv, autoDetectMapping } from './csv/utils';
+import { FormField, TagInputMulti, Toggle } from '../adapter-ui';
+import { ColumnMapping, LEAD_FIELDS, MOCK_IMPORT_HISTORY } from './constants';
+import { parseCsv, autoDetectMapping } from './utils';
 
 // ── CSVDetailPanel ─────────────────────────────────────────────────────────────
 
@@ -37,8 +37,9 @@ export function CSVDetailPanel() {
 
   const delimChar = delimiter === 'comma' ? ',' : delimiter === 'semicolon' ? ';' : '\t';
 
-  const parseFile = useCallback((f: File, dc: string) => {
-    const isExcel = f.name.endsWith('.xlsx') || f.name.endsWith('.xls');
+  const parseFile = useCallback((f: File, dc: string, skip: boolean) => {
+    const ext     = f.name.toLowerCase();
+    const isExcel = ext.endsWith('.xlsx') || ext.endsWith('.xls');
     const reader  = new FileReader();
 
     reader.onload = (e) => {
@@ -48,11 +49,18 @@ export function CSVDetailPanel() {
       if (isExcel) {
         const wb      = XLSX.read(buf, { type: 'array' });
         const sheet   = wb.Sheets[wb.SheetNames[0]];
-        // sheet_to_json with header:1 gives rows as string[][]
         const allRows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' });
         if (allRows.length === 0) return;
-        const headers  = (allRows[0] as string[]).map((h) => String(h).trim());
-        const dataRows = allRows.slice(1, 6).map((r) => (r as string[]).map((c) => String(c).trim()));
+        let headers: string[];
+        let dataRows: string[][];
+        if (skip) {
+          headers  = (allRows[0] as string[]).map((h) => String(h).trim());
+          dataRows = allRows.slice(1, 6).map((r) => (r as string[]).map((c) => String(c).trim()));
+        } else {
+          const maxCols = Math.max(...allRows.slice(0, 6).map((r) => (r as string[]).length));
+          headers  = Array.from({ length: maxCols }, (_, i) => `Column ${i + 1}`);
+          dataRows = allRows.slice(0, 5).map((r) => (r as string[]).map((c) => String(c).trim()));
+        }
         setCsvHeaders(headers);
         setPreviewRows(dataRows);
         setMapping(autoDetectMapping(headers));
@@ -60,8 +68,16 @@ export function CSVDetailPanel() {
         const text    = new TextDecoder().decode(buf as ArrayBuffer);
         const allRows = parseCsv(text, dc);
         if (allRows.length === 0) return;
-        const headers = allRows[0];
-        const rows    = allRows.slice(1, 6);
+        let headers: string[];
+        let rows: string[][];
+        if (skip) {
+          headers = allRows[0];
+          rows    = allRows.slice(1, 6);
+        } else {
+          const maxCols = Math.max(...allRows.slice(0, 6).map((r) => r.length));
+          headers = Array.from({ length: maxCols }, (_, i) => `Column ${i + 1}`);
+          rows    = allRows.slice(0, 5);
+        }
         setCsvHeaders(headers);
         setPreviewRows(rows);
         setMapping(autoDetectMapping(headers));
@@ -71,7 +87,7 @@ export function CSVDetailPanel() {
     reader.readAsArrayBuffer(f);
   }, []);
 
-  function handleFile(f: File) { setFile(f); parseFile(f, delimChar); }
+  function handleFile(f: File) { setFile(f); parseFile(f, delimChar, skipHeader); }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -90,21 +106,30 @@ export function CSVDetailPanel() {
     setProgress(0);
   }
 
-  // Re-parse when delimiter changes
-  useEffect(() => { if (file) parseFile(file, delimChar); }, [delimiter, file, delimChar, parseFile]);
+  // Re-parse when delimiter or skipHeader changes
+  useEffect(() => { if (file) parseFile(file, delimChar, skipHeader); }, [delimiter, skipHeader, file, delimChar, parseFile]);
 
   async function parseAllRows(f: File, dc: string): Promise<Record<string, string>[]> {
-    const isExcel = f.name.endsWith('.xlsx') || f.name.endsWith('.xls');
+    const ext     = f.name.toLowerCase();
+    const isExcel = ext.endsWith('.xlsx') || ext.endsWith('.xls');
     const buf     = await f.arrayBuffer();
 
     if (isExcel) {
-      const wb       = XLSX.read(buf, { type: 'array' });
-      const sheet    = wb.Sheets[wb.SheetNames[0]];
-      const allRows  = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' });
+      const wb      = XLSX.read(buf, { type: 'array' });
+      const sheet   = wb.Sheets[wb.SheetNames[0]];
+      const allRows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' });
       if (allRows.length === 0) return [];
-      const headers  = (allRows[0] as string[]).map((h) => String(h).trim());
-      const dataRows = allRows.slice(1).slice(0, maxRows);
-      return (dataRows as string[][]).map((r) => {
+      let headers: string[];
+      let dataRows: string[][];
+      if (skipHeader) {
+        headers  = (allRows[0] as string[]).map((h) => String(h).trim());
+        dataRows = (allRows.slice(1) as string[][]).slice(0, maxRows);
+      } else {
+        const maxCols = Math.max(...allRows.map((r) => (r as string[]).length));
+        headers  = Array.from({ length: maxCols }, (_, i) => `Column ${i + 1}`);
+        dataRows = (allRows as string[][]).slice(0, maxRows);
+      }
+      return dataRows.map((r) => {
         const row: Record<string, string> = {};
         headers.forEach((h, i) => { const v = String(r[i] ?? '').trim(); if (v) row[h] = v; });
         return row;

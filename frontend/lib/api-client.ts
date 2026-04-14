@@ -7,7 +7,7 @@
  * - Every function returns the unwrapped payload (ApiResponse<T>.data).
  */
 
-import { get, post, patch, del } from './http';
+import { get, post, patch, put, del } from './http';
 import { API_URLS } from './api-urls';
 
 export { ApiError } from './http';
@@ -28,12 +28,19 @@ import type {
   Campaign,
   CampaignPerformance,
   CreateCampaignDto,
+  UpdateCampaignDto,
   ICPProfile,
   ICPStats,
   CreateICPDto,
   Conversation,
   ReplySuggestions,
   HealthCheck,
+  PromptConfig,
+  PromptConfigSnapshot,
+  UpsertPromptConfigDto,
+  CreatePromptConfigDto,
+  PreviewRequest,
+  PreviewResult,
 } from '@/models';
 
 function unwrap<T>(response: ApiResponse<T>): T {
@@ -133,14 +140,20 @@ export const campaigns = {
   create: (body: CreateCampaignDto) =>
     post<ApiResponse<Campaign>>(API_URLS.campaigns.create, body).then(unwrap),
 
-  update: (id: string, body: Partial<CreateCampaignDto>) =>
+  update: (id: string, body: UpdateCampaignDto) =>
     patch<ApiResponse<Campaign>>(API_URLS.campaigns.update(id), body).then(unwrap),
+
+  launch: (id: string) =>
+    patch<ApiResponse<Campaign>>(API_URLS.campaigns.launch(id)).then(unwrap),
 
   pause: (id: string) =>
     patch<ApiResponse<Campaign>>(API_URLS.campaigns.pause(id)).then(unwrap),
 
   resume: (id: string) =>
     patch<ApiResponse<Campaign>>(API_URLS.campaigns.resume(id)).then(unwrap),
+
+  archive: (id: string) =>
+    patch<ApiResponse<Campaign>>(API_URLS.campaigns.archive(id)).then(unwrap),
 };
 
 // ── ICP ───────────────────────────────────────────────────────────────────────
@@ -246,6 +259,37 @@ export const organizations = {
 
   update: (body: Record<string, unknown>) =>
     patch<ApiResponse<unknown>>(API_URLS.organizations.update, body).then(unwrap),
+};
+
+// ── Prompt Configs (library) ──────────────────────────────────────────────────
+
+export const promptConfigs = {
+  list: () =>
+    get<ApiResponse<(PromptConfig & { _count: { campaigns: number } })[]>>(API_URLS.promptConfigs.list).then(unwrap),
+
+  create: (body: CreatePromptConfigDto) =>
+    post<ApiResponse<PromptConfig>>(API_URLS.promptConfigs.create, body).then(unwrap),
+
+  get: (id: string) =>
+    get<ApiResponse<PromptConfig>>(API_URLS.promptConfigs.get(id)).then(unwrap),
+
+  update: (id: string, body: Partial<CreatePromptConfigDto>) =>
+    put<ApiResponse<PromptConfig>>(API_URLS.promptConfigs.update(id), body).then(unwrap),
+
+  archive: (id: string) =>
+    post<ApiResponse<PromptConfig>>(API_URLS.promptConfigs.archive(id)).then(unwrap),
+
+  clone: (id: string) =>
+    post<ApiResponse<PromptConfig>>(API_URLS.promptConfigs.clone(id)).then(unwrap),
+
+  history: (id: string) =>
+    get<ApiResponse<PromptConfigSnapshot[]>>(API_URLS.promptConfigs.history(id)).then(unwrap),
+
+  restore: (id: string, version: number) =>
+    post<ApiResponse<PromptConfig>>(API_URLS.promptConfigs.restore(id, version)).then(unwrap),
+
+  preview: (id: string, body: PreviewRequest) =>
+    post<ApiResponse<PreviewResult>>(API_URLS.promptConfigs.preview(id), body).then(unwrap),
 };
 
 // ── Compliance ────────────────────────────────────────────────────────────────

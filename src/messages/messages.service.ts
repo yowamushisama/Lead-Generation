@@ -39,13 +39,27 @@ export class MessagesService {
       );
     }
 
-    // Verify campaign belongs to this tenant if provided
-    if (dto.campaignId) {
-      const campaign = await this.campaignRepository.findFirst({
-        where: { id: dto.campaignId, organizationId: tenant.organizationId },
+    // Inherit campaignId from the lead when the caller omits it
+    const resolvedCampaignId = dto.campaignId ?? (lead as any).campaignId ?? undefined;
+    let campaign:
+      | {
+          promptConfigId: string | null;
+          promptConfig: { version: number } | null;
+          status: string;
+        }
+      | null = null;
+
+    // Verify campaign belongs to this tenant and is not archived
+    if (resolvedCampaignId) {
+      campaign = await this.campaignRepository.findFirst({
+        where: { id: resolvedCampaignId, organizationId: tenant.organizationId },
+        select: { id: true, status: true, promptConfigId: true, promptConfig: { select: { version: true } } },
       });
       if (!campaign) {
-        throw new ForbiddenException(`Campaign ${dto.campaignId} not found in your organization`);
+        throw new ForbiddenException(`Campaign ${resolvedCampaignId} not found in your organization`);
+      }
+      if (campaign.status === 'ARCHIVED') {
+        throw new ForbiddenException(`Cannot create messages for an archived campaign`);
       }
     }
 
@@ -55,12 +69,14 @@ export class MessagesService {
       data: {
         organizationId: tenant.organizationId,
         leadId: dto.leadId,
-        campaignId: dto.campaignId,
+        campaignId: resolvedCampaignId,
         channel: dto.channel,
         subject: dto.subject,
         body: dto.body,
         spamScore: dto.spamScore ?? spamCheck.spamScore,
         status: spamCheck.isApproved ? MessageStatus.PENDING_APPROVAL : MessageStatus.REJECTED,
+        promptConfigId: campaign?.promptConfigId ?? null,
+        promptVersion: campaign?.promptConfig ? String(campaign.promptConfig.version) : null,
         generatedAt: new Date(),
       },
     });

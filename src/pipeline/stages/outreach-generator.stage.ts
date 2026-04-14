@@ -4,10 +4,10 @@ import { TenantContext } from '../../common/interfaces/tenant-context.interface'
 import { AIProviderFactory } from '../../ai/ai-provider.factory';
 import { PersonalizationResult } from '../../common/types/personalization.types';
 import {
-  OUTREACH_SYSTEM_PROMPT,
   ANTI_PATTERN_SYSTEM_PROMPT,
   buildOutreachPrompt,
 } from '../../ai/prompts/outreach.prompt';
+import { PromptConfigService } from '../../prompt-config/prompt-config.service';
 
 export interface OutreachGeneratorInput {
   leadId: string;
@@ -17,6 +17,7 @@ export interface OutreachGeneratorInput {
   serviceOffering: string;
   senderName?: string;
   personalizationModel?: string;
+  campaignId?: string;
 }
 
 export interface GeneratedMessage {
@@ -32,6 +33,8 @@ export interface OutreachGeneratorOutput {
   leadId: string;
   messages: GeneratedMessage[];
   tokensUsed: number;
+  promptConfigId: string | null;
+  promptVersion: string | null;
 }
 
 @Injectable()
@@ -42,7 +45,10 @@ export class OutreachGeneratorStage implements IPipelineStage<
   readonly stageName = 'outreach-generator';
   private readonly logger = new Logger(OutreachGeneratorStage.name);
 
-  constructor(private readonly aiFactory: AIProviderFactory) {}
+  constructor(
+    private readonly aiFactory: AIProviderFactory,
+    private readonly promptConfigService: PromptConfigService,
+  ) {}
 
   async process(
     input: OutreachGeneratorInput,
@@ -54,23 +60,42 @@ export class OutreachGeneratorStage implements IPipelineStage<
     let totalTokens = 0;
     const messages: GeneratedMessage[] = [];
 
+    const promptConfig = input.campaignId
+      ? await this.promptConfigService.findEffectiveForCampaign(context, input.campaignId)
+      : null;
+
+    const campaignContext = promptConfig
+      ? {
+          customToneInstructions: promptConfig.customToneInstructions ?? undefined,
+          ctaStyle: promptConfig.ctaStyle,
+          customCta: promptConfig.customCta ?? undefined,
+          forbiddenPhrases: (promptConfig.forbiddenPhrases as string[]) ?? undefined,
+          complianceNotes: promptConfig.complianceNotes ?? undefined,
+        }
+      : undefined;
+
+    const outreachSystemPrompt = this.promptConfigService.buildEffectiveOutreachSystemPrompt(promptConfig);
+
     for (const channel of channels) {
-      const prompt = buildOutreachPrompt({
-        channel,
-        recipientName: input.recipientName,
-        recipientRole: input.recipientRole,
-        openingHook: personalization.personalContext.openingHook,
-        painPointReference: personalization.personalContext.painPointReference,
-        valueProposition: personalization.personalContext.valueProposition,
-        callToAction: personalization.personalContext.callToAction,
-        toneProfile: personalization.toneProfile,
-        socialProof: personalization.personalContext.socialProof,
-        senderName: input.senderName,
-        serviceOffering: input.serviceOffering,
-      });
+      const prompt = buildOutreachPrompt(
+        {
+          channel,
+          recipientName: input.recipientName,
+          recipientRole: input.recipientRole,
+          openingHook: personalization.personalContext.openingHook,
+          painPointReference: personalization.personalContext.painPointReference,
+          valueProposition: personalization.personalContext.valueProposition,
+          callToAction: personalization.personalContext.callToAction,
+          toneProfile: personalization.toneProfile,
+          socialProof: personalization.personalContext.socialProof,
+          senderName: input.senderName,
+          serviceOffering: input.serviceOffering,
+        },
+        campaignContext,
+      );
 
       const result = await provider.complete(prompt, {
-        systemPrompt: OUTREACH_SYSTEM_PROMPT,
+        systemPrompt: outreachSystemPrompt,
         temperature: 0.6,
         maxTokens: 512,
       });
@@ -118,6 +143,12 @@ export class OutreachGeneratorStage implements IPipelineStage<
       approvedCount: messages.filter((m) => m.isApproved).length,
     });
 
-    return { leadId: input.leadId, messages, tokensUsed: totalTokens };
+    return {
+      leadId: input.leadId,
+      messages,
+      tokensUsed: totalTokens,
+      promptConfigId: promptConfig?.id ?? null,
+      promptVersion: promptConfig ? String(promptConfig.version) : null,
+    };
   }
 }

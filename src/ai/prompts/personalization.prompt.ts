@@ -14,6 +14,15 @@ Anti-pattern rules:
 - NEVER make the message about us first — lead with their problem
 - NEVER use generic value props — tie everything to their specific context`;
 
+export interface PositioningContext {
+  companyDescription?: string;
+  coreOffer?: string;
+  targetPersona?: string;
+  mainPainSolved?: string;
+  mainOutcomePromised?: string;
+  proofPoints?: string[];
+}
+
 export const buildPersonalizationPrompt = (
   leadProfile: {
     name?: string;
@@ -25,10 +34,22 @@ export const buildPersonalizationPrompt = (
   },
   serviceOffering: string,
   uniqueValue: string,
+  positioningContext?: PositioningContext,
 ): string => {
-  return `Our Service: ${serviceOffering}
-Our Unique Value: ${uniqueValue}
+  let positioningBlock = '';
+  if (positioningContext) {
+    const lines: string[] = [];
+    if (positioningContext.companyDescription) lines.push(`- Description: ${positioningContext.companyDescription}`);
+    if (positioningContext.coreOffer)          lines.push(`- Core offer: ${positioningContext.coreOffer}`);
+    if (positioningContext.targetPersona)      lines.push(`- Who it's for: ${positioningContext.targetPersona}`);
+    if (positioningContext.mainPainSolved)     lines.push(`- Pain we solve: ${positioningContext.mainPainSolved}`);
+    if (positioningContext.mainOutcomePromised) lines.push(`- Outcome promised: ${positioningContext.mainOutcomePromised}`);
+    if (positioningContext.proofPoints?.length) lines.push(`- Proof: ${positioningContext.proofPoints.join('; ')}`);
+    if (lines.length) positioningBlock = `\nCompany Positioning:\n${lines.join('\n')}\n`;
+  }
 
+  return `Our Service: ${serviceOffering}
+Our Unique Value: ${uniqueValue}${positioningBlock}
 Lead Profile:
 - Name: ${leadProfile.name ?? 'Unknown'}
 - Role: ${leadProfile.role ?? 'Unknown'}

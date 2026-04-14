@@ -6,6 +6,7 @@ import { QUEUE_NAMES } from '../common/constants/queue-names';
 import { AIModule } from '../ai/ai.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { DatabaseModule } from '../database/database.module';
+import { PromptConfigModule } from '../prompt-config/prompt-config.module';
 // Stages
 import { IntentDetectorStage } from './stages/intent-detector.stage';
 import { ICPEnricherStage } from './stages/icp-enricher.stage';
@@ -57,6 +58,7 @@ import { OutreachProcessor } from './processors/outreach.processor';
     AIModule,
     ScoringModule,
     DatabaseModule,
+    PromptConfigModule,
   ],
   providers: [
     OrchestratorService,
