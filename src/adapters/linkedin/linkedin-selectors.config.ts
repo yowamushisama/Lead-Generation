@@ -51,6 +51,12 @@ export interface LinkedInSelectors {
    */
   authorLink: string[];
 
+  /**
+   * Author profile image link — carries an aria-label with the author's name.
+   * Used as last-resort name extraction fallback.
+   */
+  authorImageLink: string[];
+
   /** Post content text (tried in order) */
   content: string[];
 
@@ -71,8 +77,8 @@ export interface LinkedInSelectors {
 }
 
 export const LINKEDIN_SELECTORS: LinkedInSelectors = {
-  lastVerified: '2026-04-06',
-  version: 2,
+  lastVerified: '2026-04-14',
+  version: 3,
 
   // ── Page wait ────────────────────────────────────────────────────────────────
   waitForPost: '[data-urn*="activity"], .occludable-update, [data-urn]',
@@ -92,7 +98,9 @@ export const LINKEDIN_SELECTORS: LinkedInSelectors = {
 
   // ── Author name ──────────────────────────────────────────────────────────────
   authorName: [
-    '.update-components-actor__name a', // current primary (2025)
+    '.update-components-actor__meta-link', // current primary (2026) — actor <a> wrapping title
+    '.update-components-actor__title a', // title link variant
+    '.update-components-actor__name a', // older name-link pattern
     '.update-components-actor__name', // when link is separate
     '.feed-shared-actor__name a', // legacy feed card
     '.entity-result__title-text a', // people/entity search result
@@ -103,6 +111,12 @@ export const LINKEDIN_SELECTORS: LinkedInSelectors = {
     'a[href*="/in/"]', // any profile link in card
     '.app-aware-link[href*="/in/"]', // branded profile link
     '.update-components-actor__meta-link', // meta link below name
+  ],
+
+  // ── Author image link (name fallback) ────────────────────────────────────────
+  authorImageLink: [
+    '.update-components-actor__image', // profile photo link (has aria-label with name)
+    '.feed-shared-actor__image', // legacy feed card photo link
   ],
 
   // ── Content ──────────────────────────────────────────────────────────────────

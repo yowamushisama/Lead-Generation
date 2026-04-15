@@ -1,10 +1,8 @@
-import { TenantMode } from '../common/enums/tenant-mode.enum';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CampaignRepository } from '../database/repositories/campaign.repository';
-import { AdapterRegistryService } from '../adapters/adapter-registry.service';
 import { OrganizationRepository } from '../database/repositories/organization.repository';
-import { OrchestratorService } from '../pipeline/orchestrator.service';
+import { CampaignRunnerService } from '../campaigns/campaign-runner.service';
 
 @Injectable()
 export class DailyScrapeJob {
@@ -13,8 +11,7 @@ export class DailyScrapeJob {
   constructor(
     private readonly organizationRepository: OrganizationRepository,
     private readonly campaignRepository: CampaignRepository,
-    private readonly adapterRegistry: AdapterRegistryService,
-    private readonly orchestrator: OrchestratorService,
+    private readonly campaignRunner: CampaignRunnerService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
@@ -34,52 +31,21 @@ export class DailyScrapeJob {
         select: { id: true, keywords: true, targetLocations: true, targetIndustries: true },
       });
 
-      const adapters = this.adapterRegistry.getAll();
-
-      // Run each adapter once per campaign so that leads are attributed to the
-      // correct campaign and scored with that campaign's ICP profile.
       for (const campaign of campaigns) {
-        const keywords = (campaign.keywords as string[] | null) ?? [];
-        const locations = (campaign.targetLocations as string[] | null) ?? [];
-        const industries = (campaign.targetIndustries as string[] | null) ?? [];
-
-        for (const adapter of adapters) {
-          const healthy = await adapter.isHealthy().catch(() => false);
-          if (!healthy) continue;
-
-          // Intent adapters (e.g. LinkedIn) require at least one keyword to operate
-          if (adapter.sourceType === 'intent' && keywords.length === 0) {
-            this.logger.warn({
-              message: `Skipping ${adapter.name} for campaign ${campaign.id} — no keywords configured`,
-              organizationId: org.id,
-            });
-            continue;
-          }
-
-          try {
-            const config = {
-              organizationId: org.id,
-              campaignId: campaign.id,
-              keywords,
-              locations,
-              industries,
-            };
-            for await (const lead of adapter.collect(config)) {
-              await this.orchestrator.enqueueLead(
-                lead,
-                { organizationId: org.id, userId: 'system', mode: TenantMode.SINGLE },
-                { campaignId: campaign.id },
-              );
-              totalEnqueued++;
-            }
-          } catch (error) {
-            this.logger.error({
-              message: `Adapter collect failed: ${adapter.name}`,
-              organizationId: org.id,
-              campaignId: campaign.id,
-              error: String(error),
-            });
-          }
+        try {
+          const summary = await this.campaignRunner.runCampaign(
+            this.campaignRunner.buildSystemTenant(org.id),
+            campaign.id,
+            'scheduled',
+          );
+          totalEnqueued += summary.enqueued;
+        } catch (error) {
+          this.logger.error({
+            message: 'Scheduled campaign run failed',
+            organizationId: org.id,
+            campaignId: campaign.id,
+            error: String(error),
+          });
         }
       }
     }

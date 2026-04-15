@@ -41,12 +41,17 @@ export class IntentDetectorStage implements IPipelineStage<IntentStageInput, Int
 
     let intent: IntentResult;
     try {
-      intent = JSON.parse(result.content) as IntentResult;
-    } catch {
+      // Extract JSON object from response — handles code fences, leading/trailing text
+      const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('No JSON object found in model response');
+      intent = JSON.parse(jsonMatch[0]) as IntentResult;
+    } catch (err) {
       this.logger.warn({
         message: 'Intent JSON parse failed — using fallback',
         leadId: input.leadId,
         organizationId: context.organizationId,
+        error: String(err),
+        rawContent: result.content.slice(0, 500),
       });
       intent = {
         intentType: 'UNKNOWN',

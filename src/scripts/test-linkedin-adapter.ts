@@ -30,6 +30,10 @@ class InMemoryRedisService {
     });
   }
 
+  async del(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
   async expire(key: string, ttlSeconds: number): Promise<void> {
     const entry = this.store.get(key);
     if (!entry) {
@@ -217,6 +221,7 @@ async function main(): Promise<void> {
     import('../adapters/linkedin/linkedin-session.service'),
     import('../adapters/linkedin/linkedin-stealth.service'),
   ]);
+  // LinkedInStealthService is kept in providers so NestJS lifecycle hooks (OnModuleDestroy) run
   const { LinkedInDiagnosticsService } =
     await import('../adapters/linkedin/linkedin-diagnostics.service');
 
@@ -249,7 +254,6 @@ async function main(): Promise<void> {
   });
 
   const configService = app.get(ConfigService);
-  const stealthService = app.get(LinkedInStealthService);
   const adapter = app.get(LinkedInAdapter);
   const linkedinEmail = configService.get<string>('LINKEDIN_EMAIL');
   const linkedinPassword = configService.get<string>('LINKEDIN_PASSWORD');
@@ -260,7 +264,7 @@ async function main(): Promise<void> {
       return;
     }
     shuttingDown = true;
-    await stealthService.closeBrowser().catch(() => undefined);
+    // app.close() triggers OnModuleDestroy on LinkedInStealthService which closes the browser
     await app.close().catch(() => undefined);
     process.exit(exitCode);
   };

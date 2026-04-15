@@ -21,7 +21,20 @@ SCORING NOTES:
 - Confidence 0.9+ = explicit, specific, urgent, decision-maker
 - Confidence 0.7-0.9 = clear intent, some qualification needed
 - Confidence 0.5-0.7 = possible buyer, needs validation
-- Confidence < 0.5 = not a buyer, wrong context`;
+- Confidence < 0.5 = not a buyer, wrong context
+
+You MUST respond with ONLY a raw JSON object — no markdown, no code fences, no explanation. The JSON must match this exact schema:
+{
+  "intentType": "BUYING" | "HIRING" | "PARTNERSHIP" | "RESEARCH" | "COMPLAINING" | "COMPARING" | "EXPLORING" | "UNKNOWN",
+  "intentUrgency": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "NONE",
+  "intentConfidence": <number 0.0–1.0>,
+  "isBuyer": <boolean>,
+  "intentReasoning": "<brief explanation>",
+  "painPoints": ["<string>"],
+  "fears": ["<string>"],
+  "desires": ["<string>"],
+  "hiringIntent": <boolean>
+}`;
 
 export const buildIntentPrompt = (content: string, platform: string): string => {
   return `Platform: ${platform}
@@ -31,5 +44,5 @@ Content to analyze:
 ${content}
 """
 
-Classify this content's buying intent. Return ONLY a valid JSON object matching the IntentResult schema.`;
+Classify this content's buying intent. Respond with ONLY the raw JSON object — no code fences, no markdown.`;
 };

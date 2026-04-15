@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ProxyConfig } from './linkedin-stealth.service';
+
+export interface ProxyConfig {
+  server: string;
+  username?: string;
+  password?: string;
+  raw: string;
+}
 
 @Injectable()
 export class LinkedInProxyService {

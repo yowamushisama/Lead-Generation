@@ -1,8 +1,14 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
 import { LeadRepository } from '../database/repositories/lead.repository';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { ICPConfig, ICPMatch } from '../common/types/icp.types';
+import { OpenAIProvider } from '../ai/providers/openai.provider';
+import {
+  ICP_ENHANCE_SYSTEM_PROMPT,
+  VALID_ICP_STAGES,
+  buildICPEnhancePrompt,
+} from '../ai/prompts/icp-enhance.prompt';
 
 export interface CreateICPDto {
   name: string;
@@ -19,9 +25,12 @@ export interface UpdateICPDto {
 export class ICPService {
   private readonly logger = new Logger(ICPService.name);
 
+  private static readonly MAX_ENHANCE_RETRIES = 2;
+
   constructor(
     private readonly icpProfileRepository: IcpProfileRepository,
     private readonly leadRepository: LeadRepository,
+    private readonly openAiProvider: OpenAIProvider,
   ) {}
 
   async create(tenant: TenantContext, dto: CreateICPDto) {
@@ -149,6 +158,57 @@ export class ICPService {
       missedSignals: missed,
       reasoning: `Score: ${score}/${maxScore} — ${matched.length} signals matched`,
     };
+  }
+
+  async enhance(profileName: string): Promise<ICPConfig> {
+    const prompt = buildICPEnhancePrompt(profileName);
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= ICPService.MAX_ENHANCE_RETRIES; attempt++) {
+      const result = await this.openAiProvider.complete(prompt, {
+        model: 'gpt-4o-mini',
+        systemPrompt: ICP_ENHANCE_SYSTEM_PROMPT,
+        temperature: 0.4,
+        maxTokens: 800,
+      });
+
+      let parsed: Partial<ICPConfig>;
+      try {
+        parsed = JSON.parse(result.content) as Partial<ICPConfig>;
+      } catch (err) {
+        lastError = err;
+        this.logger.warn({
+          message: `ICP enhance JSON parse failed (attempt ${attempt + 1}/${ICPService.MAX_ENHANCE_RETRIES + 1})`,
+          profileName,
+          raw: result.content.slice(0, 200),
+        });
+        continue;
+      }
+
+      const toStrings = (val: unknown): string[] =>
+        Array.isArray(val) ? val.filter((e): e is string => typeof e === 'string') : [];
+
+      return {
+        targetRoles:      toStrings(parsed.targetRoles),
+        targetIndustries: toStrings(parsed.targetIndustries),
+        targetLocations:  toStrings(parsed.targetLocations),
+        targetStages:     toStrings(parsed.targetStages).filter(
+          (s) => (VALID_ICP_STAGES as readonly string[]).includes(s),
+        ),
+        buyerSignals:     toStrings(parsed.buyerSignals),
+        urgencySignals:   toStrings(parsed.urgencySignals),
+        budgetSignals:    toStrings(parsed.budgetSignals),
+      };
+    }
+
+    this.logger.error({
+      message: `ICP enhance failed after all retries`,
+      profileName,
+      error: lastError,
+    });
+    throw new InternalServerErrorException(
+      'AI enhancement failed to produce valid JSON after multiple attempts. Please try again.',
+    );
   }
 
   async getStats(tenant: TenantContext, id: string) {

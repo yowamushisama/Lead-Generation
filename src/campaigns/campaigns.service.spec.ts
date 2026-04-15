@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
+import { CampaignRunnerService } from './campaign-runner.service';
 import { CampaignRepository } from '../database/repositories/campaign.repository';
 import { LeadRepository } from '../database/repositories/lead.repository';
 import { MessageRepository } from '../database/repositories/message.repository';
 import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
+import { PrismaService } from '../database/prisma.service';
 
 const mockCampaignRepository = {
   create: jest.fn(),
@@ -35,6 +37,12 @@ const icpRow = {
 
 const mockIcpProfileRepository = {
   findFirst: jest.fn(),
+};
+
+const mockPrismaService = {};
+
+const mockCampaignRunnerService = {
+  runOnActivationIfEnabled: jest.fn(),
 };
 
 const tenant = { organizationId: 'org-1', userId: 'user-1', role: 'admin' };
@@ -85,6 +93,8 @@ describe('CampaignsService', () => {
         { provide: LeadRepository, useValue: mockLeadRepository },
         { provide: MessageRepository, useValue: mockMessageRepository },
         { provide: IcpProfileRepository, useValue: mockIcpProfileRepository },
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: CampaignRunnerService, useValue: mockCampaignRunnerService },
       ],
     }).compile();
 
@@ -211,6 +221,10 @@ describe('CampaignsService', () => {
       expect(mockCampaignRepository.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'ACTIVE', isActive: true } }),
       );
+      expect(mockCampaignRunnerService.runOnActivationIfEnabled).toHaveBeenCalledWith(
+        tenant,
+        'camp-1',
+      );
     });
 
     it('throws ForbiddenException when launching a non-DRAFT campaign', async () => {
@@ -258,6 +272,10 @@ describe('CampaignsService', () => {
 
       expect(result.status).toBe('ACTIVE');
       expect(result.isActive).toBe(true);
+      expect(mockCampaignRunnerService.runOnActivationIfEnabled).toHaveBeenCalledWith(
+        tenant,
+        'camp-1',
+      );
     });
 
     it('throws ForbiddenException when resuming an archived campaign', async () => {

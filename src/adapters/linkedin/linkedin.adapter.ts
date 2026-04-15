@@ -6,7 +6,6 @@ import { RawLeadInput } from '../../common/interfaces/lead-input.interface';
 import { LeadSource } from '../../common/enums/lead-source.enum';
 import { LinkedInStealthService } from './linkedin-stealth.service';
 import { LinkedInSessionService } from './linkedin-session.service';
-import { LinkedInProxyService } from './linkedin-proxy.service';
 import { LinkedInDiagnosticsService } from './linkedin-diagnostics.service';
 import { LINKEDIN_SELECTORS, LinkedInSelectors } from './linkedin-selectors.config';
 
@@ -26,7 +25,6 @@ export class LinkedInAdapter extends BaseAdapter {
   constructor(
     private readonly stealthService: LinkedInStealthService,
     private readonly sessionService: LinkedInSessionService,
-    private readonly proxyService: LinkedInProxyService,
     private readonly diagnostics: LinkedInDiagnosticsService,
   ) {
     super();
@@ -62,107 +60,105 @@ export class LinkedInAdapter extends BaseAdapter {
     let yielded = 0;
     const seenAuthors = new Set<string>();
 
-    for (const keyword of keywords) {
-      if (yielded >= maxResults) break;
+    // Authenticate once — reuse the same page across all keywords.
+    // The persistent browser context means LinkedIn sees the same device every time.
+    let page: Page | null = null;
+    try {
+      page = await this.sessionService.getAuthenticatedPage();
 
-      let proxy = this.proxyService.getNextProxy();
-      let page: Page | null = null;
+      for (const keyword of keywords) {
+        if (yielded >= maxResults) break;
 
-      try {
-        page = await this.sessionService.getAuthenticatedPage(proxy);
-        const searchUrl = `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(keyword)}&sortBy=date_posted`;
+        try {
+          const searchUrl = `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(keyword)}&sortBy=date_posted`;
 
-        // Human-like behaviour before navigating
-        await (page as any).mouse.move(
-          Math.floor(Math.random() * 800) + 100,
-          Math.floor(Math.random() * 400) + 100,
-        );
-        await page.waitForTimeout(this.stealthService.randomDelayMs(800, 2500));
+          // Human-like behaviour before navigating
+          await (page as any).mouse.move(
+            Math.floor(Math.random() * 800) + 100,
+            Math.floor(Math.random() * 400) + 100,
+          );
+          await page.waitForTimeout(this.stealthService.randomDelayMs(800, 2000));
 
-        await (page as any).goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await this.diagnostics.logPageState(page, {
-          phase: 'search-results',
-          keyword,
-          organizationId: config.organizationId,
-        });
-
-        // Wait for at least one post container to appear (JS-rendered)
-        await (page as any)
-          .waitForSelector(LINKEDIN_SELECTORS.waitForPost, { timeout: 10000 })
-          .catch(() => {});
-        await page.waitForTimeout(this.stealthService.randomDelayMs(1000, 2200));
-
-        // Detect and handle rate-limiting / CAPTCHA
-        if (await this.isRateLimited(page)) {
-          this.logWarn('LinkedIn rate limit / checkpoint detected — rotating proxy', {
+          await (page as any).goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await this.diagnostics.logPageState(page, {
+            phase: 'search-results',
             keyword,
             organizationId: config.organizationId,
           });
-          if (proxy) this.proxyService.markFailed(proxy);
-          proxy = this.proxyService.getNextProxy();
-          await (page as any).close().catch(() => {});
-          page = await this.sessionService.getAuthenticatedPage(proxy);
-          await (page as any).goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+          // Detect and handle rate-limiting / CAPTCHA — log and skip keyword (no browser restart)
+          if (await this.isRateLimited(page)) {
+            this.logWarn('LinkedIn rate limit / checkpoint detected — skipping keyword', {
+              keyword,
+              organizationId: config.organizationId,
+            });
+            continue;
+          }
+
+          // Wait for at least one post container to appear (JS-rendered)
           await (page as any)
             .waitForSelector(LINKEDIN_SELECTORS.waitForPost, { timeout: 10000 })
             .catch(() => {});
-          await this.diagnostics.logPageState(page, {
-            phase: 'search-results-after-rotation',
+
+          // Scroll in 5 steps to trigger lazy-loaded post cards
+          for (let i = 0; i < 5; i++) {
+            await (page as any).evaluate(() => window.scrollBy(0, 600));
+            await page.waitForTimeout(this.stealthService.randomDelayMs(600, 1200));
+          }
+
+          // Wait for new content to settle after scrolling
+          await (page as any)
+            .waitForSelector(LINKEDIN_SELECTORS.waitForPost, { timeout: 5000 })
+            .catch(() => {});
+
+          await this.diagnostics.logSearchDiagnostics(page, {
+            phase: 'pre-extract',
             keyword,
             organizationId: config.organizationId,
           });
-          await page.waitForTimeout(this.stealthService.randomDelayMs(1000, 2000));
+
+          const posts = await this.extractPosts(page);
+          this.log(`Found ${posts.length} posts for keyword: "${keyword}"`, {
+            organizationId: config.organizationId,
+          });
+
+          for (const post of posts) {
+            if (yielded >= maxResults) break;
+
+            // One lead per LinkedIn profile — skip repeated authors seen in this run
+            if (post.authorUrl && seenAuthors.has(post.authorUrl)) continue;
+            if (post.authorUrl) seenAuthors.add(post.authorUrl);
+
+            await page.waitForTimeout(this.stealthService.randomDelayMs(300, 1000));
+
+            yield {
+              externalId: post.authorUrl || undefined,
+              source: LeadSource.LINKEDIN,
+              sourceType: 'intent',
+              sourceUrl: post.authorUrl
+                ? this.buildSourceUrl('https://www.linkedin.com', post.authorUrl)
+                : undefined,
+              name: post.authorName,
+              headline: this.sanitizeText(post.headline),
+              originalContent: this.sanitizeText(post.content),
+              metadata: {
+                keyword,
+                postedAt: post.postedAt,
+                campaignId: config.campaignId,
+                scrapedAt: new Date().toISOString(),
+              },
+            };
+            yielded++;
+          }
+        } catch (error) {
+          this.logError(`Error scraping LinkedIn for keyword: "${keyword}"`, error);
+          // Continue to next keyword — don't abort the whole run
         }
-
-        // Scroll in steps to trigger lazy-loaded post cards
-        for (const distance of [300, 600, 400]) {
-          await (page as any).evaluate((d: number) => window.scrollBy(0, d), distance);
-          await page.waitForTimeout(this.stealthService.randomDelayMs(400, 900));
-        }
-        await this.diagnostics.logSearchDiagnostics(page, {
-          phase: 'pre-extract',
-          keyword,
-          organizationId: config.organizationId,
-        });
-
-        const posts = await this.extractPosts(page);
-        this.log(`Found ${posts.length} posts for keyword: "${keyword}"`, {
-          organizationId: config.organizationId,
-        });
-
-        for (const post of posts) {
-          if (yielded >= maxResults) break;
-
-          // One lead per LinkedIn profile — skip repeated authors seen in this run
-          if (post.authorUrl && seenAuthors.has(post.authorUrl)) continue;
-          if (post.authorUrl) seenAuthors.add(post.authorUrl);
-
-          await page.waitForTimeout(this.stealthService.randomDelayMs(500, 2000));
-
-          yield {
-            externalId: post.authorUrl || undefined,
-            source: LeadSource.LINKEDIN,
-            sourceType: 'intent',
-            sourceUrl: post.authorUrl
-              ? this.buildSourceUrl('https://www.linkedin.com', post.authorUrl)
-              : undefined,
-            name: post.authorName,
-            headline: this.sanitizeText(post.headline),
-            originalContent: this.sanitizeText(post.content),
-            metadata: {
-              keyword,
-              postedAt: post.postedAt,
-              campaignId: config.campaignId,
-              scrapedAt: new Date().toISOString(),
-            },
-          };
-          yielded++;
-        }
-      } catch (error) {
-        this.logError(`Error scraping LinkedIn for keyword: "${keyword}"`, error);
-      } finally {
-        if (page) await (page as any).close().catch(() => {});
       }
+    } catch (error) {
+      this.logError('Failed to establish LinkedIn session', error);
+    } finally {
+      if (page) await (page as any).close().catch(() => {});
     }
 
     this.log(`LinkedIn collect complete: ${yielded} leads`, {
@@ -222,7 +218,25 @@ export class LinkedInAdapter extends BaseAdapter {
             // Name text — prefer aria-hidden span which holds the rendered text
             const nameSpan =
               (nameEl?.querySelector('span[aria-hidden="true"]') as HTMLElement | null) ?? nameEl;
-            const authorName = nameSpan?.textContent?.trim() ?? '';
+            let authorName = nameSpan?.textContent?.trim() ?? '';
+
+            // Fallback: parse name from aria-label="View: Name Verified • ..."
+            // The actor meta-link always carries this label with the full name
+            if (!authorName && nameEl) {
+              const label = (nameEl as HTMLElement).getAttribute('aria-label') ?? '';
+              const match = label.match(/^View(?::| )\s*([^•\n]+?)(?:\s+Verified|\s*•|$)/i);
+              if (match) authorName = match[1].trim();
+            }
+
+            // Second fallback: profile image link also has aria-label with name
+            if (!authorName) {
+              const imgLink = firstMatch(card, sel.authorImageLink);
+              if (imgLink) {
+                const label = (imgLink as HTMLElement).getAttribute('aria-label') ?? '';
+                const match = label.match(/^View\s+([^']+?)(?:'s| graphic link)/i);
+                if (match) authorName = match[1].trim();
+              }
+            }
 
             // Profile href: use the name element if it's an <a>, else look for a link
             const hrefEl: Element | null =

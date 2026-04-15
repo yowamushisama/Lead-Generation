@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Target, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Plus, Target, ChevronDown, ChevronRight, X, Sparkles, Loader2 } from 'lucide-react';
 import { icp as icpApi } from '@/lib/api-client';
 import type { ICPProfile, ICPConfig } from '@/models';
 import { Card } from '@/components/ui/card';
@@ -39,6 +39,31 @@ export function ICPBuilder() {
   const [weights, setWeights] = useState<Record<string, number>>(
     Object.fromEntries(SCORING_FACTORS.map((f) => [f.key, Math.abs(f.max)])),
   );
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
+
+  const handleEnhance = async () => {
+    if (!newName.trim() || isEnhancing) return;
+    setIsEnhancing(true);
+    setEnhanceError(null);
+    try {
+      const config = await icpApi.enhance(newName.trim());
+      setNewConfig({
+        targetRoles:      config.targetRoles      ?? [],
+        targetIndustries: config.targetIndustries ?? [],
+        targetLocations:  config.targetLocations  ?? [],
+        targetStages:     (config.targetStages    ?? []).filter((s) => COMPANY_STAGES.includes(s)),
+        buyerSignals:     config.buyerSignals     ?? [],
+        urgencySignals:   config.urgencySignals   ?? [],
+        budgetSignals:    config.budgetSignals    ?? [],
+      });
+    } catch {
+      // Form is untouched — existing fields are preserved
+      setEnhanceError('AI enhancement failed. Please try again.');
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['icp'],
@@ -84,7 +109,46 @@ export function ICPBuilder() {
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-3">
-              <TagInput label="Profile Name" value={newName} onChange={(v) => setNewName(v)} placeholder="Enterprise SaaS CTOs" single />
+              {/* Profile Name with AI enhancer icon */}
+              <div>
+                <label className="section-label mb-1.5 block">Profile Name</label>
+                <div className="relative">
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full rounded-lg border border-ink/[0.06] bg-elevated px-3 py-2 pr-10 font-mono text-[12px] text-ink focus:border-aqua/30 focus:outline-none placeholder:text-dusk"
+                    placeholder="Enterprise SaaS CTOs"
+                  />
+                  {/* AI enhance button */}
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <div className="group/tooltip relative">
+                      <button
+                        type="button"
+                        disabled={!newName.trim() || isEnhancing}
+                        onClick={handleEnhance}
+                        className={cn(
+                          'flex items-center justify-center h-6 w-6 rounded-md transition-all',
+                          !newName.trim() || isEnhancing
+                            ? 'cursor-not-allowed text-dusk/40'
+                            : 'cursor-pointer text-orchid hover:bg-orchid/10',
+                        )}
+                      >
+                        {isEnhancing
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Sparkles className="h-3.5 w-3.5" />
+                        }
+                      </button>
+                      {/* Tooltip */}
+                      <span className="pointer-events-none absolute bottom-full right-0 mb-1.5 z-50 whitespace-nowrap rounded-md border border-ink/[0.08] bg-overlay px-2 py-1 font-mono text-[10px] text-mist opacity-0 shadow-lg transition-opacity duration-150 group-hover/tooltip:opacity-100">
+                        AI-fill all fields from profile name
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {enhanceError && (
+                  <p className="mt-1 font-mono text-[10px] text-crimson">{enhanceError}</p>
+                )}
+              </div>
               <TagInput label="Target Roles" tags={newConfig.targetRoles ?? []}
                 onChange={(t: string[]) => setNewConfig({ ...newConfig, targetRoles: t })}
                 placeholder="CTO, VP Engineering, Head of Product" />

@@ -17,6 +17,8 @@ import {
 } from '@nestjs/swagger';
 import { ICPService, CreateICPDto, UpdateICPDto } from './icp.service';
 import { ICPProfileResponseDto, ICPStatsResponseDto } from './dto/icp-response.dto';
+import { EnhanceICPDto } from './dto/enhance-icp.dto';
+import { ICPConfig } from '../common/types/icp.types';
 import { JwtAuthGuard } from '../common/guards/auth.guard';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { Tenant } from '../common/decorators/tenant.decorator';
@@ -58,6 +60,20 @@ export class ICPController {
   ): Promise<ApiResponseDto<ICPProfileResponseDto[]>> {
     const data = await this.icpService.findAll(tenant);
     return ApiResponseDto.success(data as ICPProfileResponseDto[]);
+  }
+
+  @Post('enhance')
+  @ApiOperation({
+    summary: 'AI-enhance ICP config from profile name',
+    description: 'Uses OpenAI to generate a full ICP config based on the provided profile name.',
+  })
+  @ApiResponse({ status: 201, description: 'ICP config generated.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT.' })
+  async enhance(
+    @Body() dto: EnhanceICPDto,
+  ): Promise<ApiResponseDto<ICPConfig>> {
+    const data = await this.icpService.enhance(dto.name);
+    return ApiResponseDto.success(data, 'ICP config generated');
   }
 
   @Get(':id')

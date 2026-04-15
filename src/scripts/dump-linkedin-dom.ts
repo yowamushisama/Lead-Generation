@@ -274,7 +274,6 @@ async function main(): Promise<void> {
   const shutdown = async (exitCode = 0): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    await stealthService.closeBrowser().catch(() => undefined);
     await app.close().catch(() => undefined);
     process.exit(exitCode);
   };

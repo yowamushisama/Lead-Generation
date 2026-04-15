@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { chromium } from 'playwright-extra';
-import type { Browser, BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
+import * as path from 'path';
 
 type StealthPluginFactory = () => unknown;
 type ChromiumPlugin = Parameters<typeof chromium.use>[0];
@@ -19,59 +20,45 @@ if (typeof createStealthPlugin !== 'function') {
 // Apply stealth plugin globally once
 chromium.use(createStealthPlugin() as ChromiumPlugin);
 
-export interface ProxyConfig {
-  server: string;
-  username?: string;
-  password?: string;
-  raw: string;
-}
-
 @Injectable()
-export class LinkedInStealthService {
+export class LinkedInStealthService implements OnModuleDestroy {
   private readonly logger = new Logger(LinkedInStealthService.name);
-  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
 
   constructor(private readonly configService: ConfigService) {}
 
-  async newPage(proxyConfig?: ProxyConfig): Promise<Page> {
-    const headless = this.configService.get<string>('LINKEDIN_HEADLESS', 'true') !== 'false';
+  /**
+   * Returns the single persistent browser context, launching it if needed.
+   * Uses launchPersistentContext so all browser state (cookies, localStorage,
+   * IndexedDB) survives between runs — LinkedIn sees the same "device" every time.
+   */
+  async getPersistentContext(): Promise<BrowserContext> {
+    if (this.context) return this.context;
 
-    // Always close and recreate the browser when a proxy is provided so that
-    // proxy rotation actually takes effect (the proxy is bound at launch time).
-    if (this.browser) {
-      await (this.browser as any).close();
-      this.browser = null;
-    }
+    const headless =
+      this.configService.get<string>('LINKEDIN_HEADLESS', 'true').toLowerCase() !== 'false';
 
-    // --no-sandbox, --disable-setuid-sandbox, --disable-dev-shm-usage are
-    // Linux-specific flags. Including them on Windows is a fingerprinting signal.
+    const userDataDir =
+      this.configService.get<string>('LINKEDIN_USER_DATA_DIR') ??
+      path.resolve(process.cwd(), 'data', 'linkedin-profile');
+
     const linuxArgs =
       process.platform === 'linux'
         ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         : [];
+
     const launchArgs = [
       ...linuxArgs,
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
     ];
 
-    const launchOptions: Record<string, unknown> = { headless, args: launchArgs };
+    const timezoneId =
+      this.configService.get<string>('LINKEDIN_TIMEZONE') ?? 'America/New_York';
 
-    if (proxyConfig) {
-      // Proxy credentials must be supplied at launch time, not via
-      // httpCredentials (which is for site-level Basic Auth, not proxy auth).
-      launchOptions['proxy'] = {
-        server: proxyConfig.server,
-        ...(proxyConfig.username ? { username: proxyConfig.username } : {}),
-        ...(proxyConfig.password ? { password: proxyConfig.password } : {}),
-      };
-    }
-
-    this.browser = await (chromium as any).launch(launchOptions);
-
-    const timezoneId = this.configService.get<string>('LINKEDIN_TIMEZONE') ?? 'America/New_York';
-
-    const contextOptions: Record<string, unknown> = {
+    const ctx: BrowserContext = await (chromium as any).launchPersistentContext(userDataDir, {
+      headless,
+      args: launchArgs,
       viewport: this.randomViewport(),
       userAgent: this.randomUserAgent(),
       locale: 'en-US',
@@ -80,12 +67,10 @@ export class LinkedInStealthService {
         'accept-language': 'en-US,en;q=0.9',
         'accept-encoding': 'gzip, deflate, br',
       },
-    };
-
-    const context: BrowserContext = await (this.browser as any).newContext(contextOptions);
+    });
 
     // Mask webdriver flag and other automation signals
-    await context.addInitScript(() => {
+    await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
       Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
       Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
@@ -93,17 +78,26 @@ export class LinkedInStealthService {
       window.chrome = { runtime: {} };
     });
 
-    const page = await context.newPage();
+    this.context = ctx;
+    this.logger.log({ message: 'Persistent browser context launched', userDataDir, headless });
+    return this.context;
+  }
 
-    this.logger.log({ message: 'New stealth page created', proxy: proxyConfig?.server ?? 'none' });
+  /**
+   * Opens a new page inside the single persistent context.
+   */
+  async newPage(): Promise<Page> {
+    const ctx = await this.getPersistentContext();
+    const page = await ctx.newPage();
+    this.logger.log({ message: 'New page created in persistent context' });
     return page;
   }
 
-  async closeBrowser(): Promise<void> {
-    if (this.browser) {
-      await (this.browser as any).close();
-      this.browser = null;
-      this.logger.log({ message: 'Browser closed' });
+  async onModuleDestroy(): Promise<void> {
+    if (this.context) {
+      await (this.context as any).close().catch(() => {});
+      this.context = null;
+      this.logger.log({ message: 'Persistent browser context closed' });
     }
   }
 

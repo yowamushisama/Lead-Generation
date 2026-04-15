@@ -9,6 +9,7 @@ import { AdaptersModule } from '../adapters/adapters.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { ComplianceModule } from '../compliance/compliance.module';
 import { ICPModule } from '../icp/icp.module';
+import { CampaignsModule } from '../campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ICPModule } from '../icp/icp.module';
     PipelineModule,
     ComplianceModule,
     ICPModule,
+    CampaignsModule,
   ],
   providers: [DailyScrapeJob, DataRetentionJob, AnalyticsRollupJob, ICPRefinementJob],
 })

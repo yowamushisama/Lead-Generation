@@ -64,11 +64,12 @@ export const API_URLS = {
 
   // ── ICP ─────────────────────────────────────────────────────────────────────
   icp: {
-    list:   `${V1}/icp`,
-    get:    (id: string) => `${V1}/icp/${id}`,
-    stats:  (id: string) => `${V1}/icp/${id}/stats`,
-    create: `${V1}/icp`,
-    update: (id: string) => `${V1}/icp/${id}`,
+    list:    `${V1}/icp`,
+    get:     (id: string) => `${V1}/icp/${id}`,
+    stats:   (id: string) => `${V1}/icp/${id}/stats`,
+    create:  `${V1}/icp`,
+    update:  (id: string) => `${V1}/icp/${id}`,
+    enhance: `${V1}/icp/enhance`,
   },
 
   // ── Conversations ────────────────────────────────────────────────────────────

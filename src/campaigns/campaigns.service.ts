@@ -10,6 +10,7 @@ import { ICPConfig } from '../common/types/icp.types';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { CampaignFilterDto } from './dto/campaign-filter.dto';
 import { sanitizePromptConfigOverrides } from '../prompt-config/prompt-config-overrides.util';
+import { CampaignRunnerService } from './campaign-runner.service';
 
 export interface CampaignWithMetrics {
   id: string;
@@ -42,6 +43,7 @@ export class CampaignsService {
     private readonly messageRepository: MessageRepository,
     private readonly icpProfileRepository: IcpProfileRepository,
     private readonly prisma: PrismaService,
+    private readonly campaignRunner: CampaignRunnerService,
   ) {}
 
   async create(tenant: TenantContext, dto: CreateCampaignDto): Promise<CampaignWithMetrics> {
@@ -216,6 +218,7 @@ export class CampaignsService {
       where: { id },
       data: { status: 'ACTIVE', isActive: true },
     });
+    await this.campaignRunner.runOnActivationIfEnabled(tenant, id);
     return this.findOne(tenant, id);
   }
 
@@ -228,6 +231,7 @@ export class CampaignsService {
       where: { id },
       data: { status: 'ACTIVE', isActive: true },
     });
+    await this.campaignRunner.runOnActivationIfEnabled(tenant, id);
     return this.findOne(tenant, id);
   }
 

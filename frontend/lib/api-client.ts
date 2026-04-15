@@ -30,6 +30,7 @@ import type {
   CreateCampaignDto,
   UpdateCampaignDto,
   ICPProfile,
+  ICPConfig,
   ICPStats,
   CreateICPDto,
   Conversation,
@@ -172,6 +173,9 @@ export const icp = {
 
   update: (id: string, body: Partial<CreateICPDto & { isActive: boolean }>) =>
     patch<ApiResponse<ICPProfile>>(API_URLS.icp.update(id), body).then(unwrap),
+
+  enhance: (name: string) =>
+    post<ApiResponse<ICPConfig>>(API_URLS.icp.enhance, { name }).then(unwrap),
 };
 
 // ── Conversations ─────────────────────────────────────────────────────────────
