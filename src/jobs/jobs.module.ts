@@ -4,6 +4,7 @@ import { DailyScrapeJob } from './daily-scrape.job';
 import { DataRetentionJob } from './data-retention.job';
 import { AnalyticsRollupJob } from './analytics-rollup.job';
 import { ICPRefinementJob } from './icp-refinement.job';
+import { LinkedInVerifyJob } from './linkedin-verify.job';
 import { DatabaseModule } from '../database/database.module';
 import { AdaptersModule } from '../adapters/adapters.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
@@ -21,6 +22,6 @@ import { CampaignsModule } from '../campaigns/campaigns.module';
     ICPModule,
     CampaignsModule,
   ],
-  providers: [DailyScrapeJob, DataRetentionJob, AnalyticsRollupJob, ICPRefinementJob],
+  providers: [DailyScrapeJob, DataRetentionJob, AnalyticsRollupJob, ICPRefinementJob, LinkedInVerifyJob],
 })
 export class JobsModule {}

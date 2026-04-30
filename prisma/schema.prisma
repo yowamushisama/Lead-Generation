@@ -302,3 +302,23 @@ model UsageRecord {
   @@unique([organizationId, date])
   @@index([organizationId, date])
 }
+
+model LinkedInRun {
+  id               String    @id @default(cuid())
+  runId            String    @unique
+  organizationId   String
+  campaignId       String?
+  startedAt        DateTime
+  completedAt      DateTime?
+  durationMs       Int
+  totalYielded     Int
+  extractionRate   Float
+  rateLimitRate    Float
+  healthy          Boolean
+  healthReason     String?
+  selectorVersion  Int
+  perKeyword       Json
+  errors           Json
+  createdAt        DateTime  @default(now())
+  @@index([organizationId, startedAt])
+}

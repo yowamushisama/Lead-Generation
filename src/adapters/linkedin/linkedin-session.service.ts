@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppLogger } from '../../common/utils/logger.util';
 import { ConfigService } from '@nestjs/config';
 import type { Page } from 'playwright';
@@ -6,6 +6,7 @@ import { RedisService } from '../../database/redis.service';
 import { LinkedInStealthService } from './linkedin-stealth.service';
 import { LinkedInDiagnosticsService } from './linkedin-diagnostics.service';
 import { LINKEDIN_SELECTORS } from './linkedin-selectors.config';
+import { LinkedInAlertService } from './linkedin-alert.service';
 
 // Redis key stores only a timestamp — the actual session lives in the
 // persistent browser profile directory on disk.
@@ -21,6 +22,7 @@ export class LinkedInSessionService {
     private readonly redis: RedisService,
     private readonly configService: ConfigService,
     private readonly diagnostics: LinkedInDiagnosticsService,
+    @Optional() private readonly alertService?: LinkedInAlertService,
   ) {}
 
   /**
@@ -56,6 +58,16 @@ export class LinkedInSessionService {
     this.logger.log({ message: 'Session not found in persistent context — logging in', email });
     await this.login(page, email);
     return page;
+  }
+
+  async revalidate(page: Page): Promise<void> {
+    if (await this.isSessionValid(page)) return;
+    this.logger.warn({ message: 'LinkedIn mid-run session expired — re-authenticating', module: 'linkedin' });
+    const email = this.configService.get<string>('LINKEDIN_EMAIL') ?? '';
+    await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (!(await this.isSessionValid(page))) {
+      await this.login(page, email);
+    }
   }
 
   async isSessionValid(page: Page): Promise<boolean> {
@@ -99,10 +111,7 @@ export class LinkedInSessionService {
       urlAfterNav.includes('challenge') ||
       urlAfterNav.includes('device-registration')
     ) {
-      this.logger.error({
-        message: 'LinkedIn requires device verification before login — set LINKEDIN_HEADLESS=false and complete verification manually once',
-        url: urlAfterNav,
-      });
+      await this.alertService?.emit('checkpoint', { url: urlAfterNav, email });
       throw new Error(`LinkedIn device verification required: ${urlAfterNav}`);
     }
 
@@ -163,11 +172,19 @@ export class LinkedInSessionService {
       currentUrl.includes('challenge') ||
       currentUrl.includes('device-registration')
     ) {
-      this.logger.warn({
-        message: 'LinkedIn 2FA/checkpoint page detected after login — manual action required',
-        url: currentUrl,
-      });
-      throw new Error(`LinkedIn login blocked by checkpoint: ${currentUrl}`);
+      await this.alertService?.emit('checkpoint', { url: currentUrl, email });
+      const isInteractive =
+        this.configService.get<string>('LINKEDIN_HEADLESS') === 'false' &&
+        this.configService.get<string>('LINKEDIN_INTERACTIVE') === 'true';
+      if (isInteractive) {
+        this.logger.warn({
+          message: 'LinkedIn checkpoint — waiting up to 10 min for operator to complete 2FA in browser',
+          url: currentUrl,
+        });
+        await page.waitForURL(/\/feed\//, { timeout: 10 * 60 * 1000 });
+      } else {
+        throw new Error(`LinkedIn login blocked by checkpoint: ${currentUrl}`);
+      }
     }
 
     // Record last login time in Redis (the actual session lives on disk)

@@ -10,6 +10,7 @@ import { LinkedInDiagnosticsService } from './linkedin/linkedin-diagnostics.serv
 import { LinkedInSearchService } from './linkedin/linkedin-search.service';
 import { LinkedInExtractionService } from './linkedin/linkedin-extraction.service';
 import { LinkedInRunSummaryService } from './linkedin/linkedin-run-summary.service';
+import { LinkedInAlertService } from './linkedin/linkedin-alert.service';
 import { GoogleMapsAdapter } from './google-maps/google-maps.adapter';
 import { DatabaseModule } from '../database/database.module';
 
@@ -27,6 +28,7 @@ import { DatabaseModule } from '../database/database.module';
     LinkedInSearchService,
     LinkedInExtractionService,
     LinkedInRunSummaryService,
+    LinkedInAlertService,
     LinkedInAdapter,
     // Google Maps discovery
     GoogleMapsAdapter,

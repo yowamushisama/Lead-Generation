@@ -12,6 +12,7 @@ import { IcpProfileRepository } from './repositories/icp-profile.repository';
 import { UsageRecordRepository } from './repositories/usage-record.repository';
 import { AnalyticsEventRepository } from './repositories/analytics-event.repository';
 import { UserRepository } from './repositories/user.repository';
+import { LinkedInRunRepository } from './repositories/linkedin-run.repository';
 
 @Global()
 @Module({
@@ -29,6 +30,7 @@ import { UserRepository } from './repositories/user.repository';
     UsageRecordRepository,
     AnalyticsEventRepository,
     UserRepository,
+    LinkedInRunRepository,
   ],
   exports: [
     PrismaService,
@@ -44,6 +46,7 @@ import { UserRepository } from './repositories/user.repository';
     UsageRecordRepository,
     AnalyticsEventRepository,
     UserRepository,
+    LinkedInRunRepository,
   ],
 })
 export class DatabaseModule {}

@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppLogger } from '../../common/utils/logger.util';
 import type { RawLeadInput } from '../../common/interfaces/lead-input.interface';
 import type { LinkedInAdapterConfig } from './linkedin-adapter.config';
+import { LinkedInRunRepository } from '../../database/repositories/linkedin-run.repository';
+import { LINKEDIN_SELECTORS } from './linkedin-selectors.config';
 
 export interface KeywordStats {
   postsFound: number;
@@ -11,6 +13,13 @@ export interface KeywordStats {
   durationMs: number;
   rateLimited: boolean;
   error?: string;
+}
+
+export interface RunHealth {
+  healthy: boolean;
+  reason?: string;
+  extractionRate: number;
+  rateLimitRate: number;
 }
 
 export interface RunSummary {
@@ -22,6 +31,7 @@ export interface RunSummary {
   campaignId?: string;
   keywords: string[];
   totalYielded: number;
+  health: RunHealth;
   perKeyword: Array<{
     keyword: string;
     postsFound: number;
@@ -47,10 +57,6 @@ interface LeadsFileContents {
   leads: RawLeadInput[];
 }
 
-/**
- * Accumulates per-keyword statistics across a LinkedIn adapter run and emits
- * a structured summary at the end. Also handles writing an optional JSON leads file.
- */
 @Injectable()
 export class LinkedInRunSummaryService {
   private readonly logger = new AppLogger(LinkedInRunSummaryService.name);
@@ -60,7 +66,10 @@ export class LinkedInRunSummaryService {
   private config: LinkedInAdapterConfig | null = null;
   private perKeyword: RunSummary['perKeyword'] = [];
 
-  /** Call once at the start of a collect() run to initialise state. */
+  constructor(
+    @Optional() private readonly linkedInRunRepo?: LinkedInRunRepository,
+  ) {}
+
   startRun(config: LinkedInAdapterConfig): void {
     this.runId = crypto.randomUUID();
     this.startedAt = new Date().toISOString();
@@ -78,7 +87,6 @@ export class LinkedInRunSummaryService {
     });
   }
 
-  /** Record per-keyword statistics after each keyword completes. */
   recordKeyword(keyword: string, stats: KeywordStats): void {
     this.perKeyword.push({ keyword, ...stats });
 
@@ -94,7 +102,6 @@ export class LinkedInRunSummaryService {
     });
   }
 
-  /** Record an error that caused a keyword to be skipped. */
   recordError(keyword: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     this.perKeyword.push({
@@ -107,13 +114,57 @@ export class LinkedInRunSummaryService {
     });
   }
 
-  /** Build and return the final run summary. Call once after the keyword loop. */
-  finalize(totalYielded: number): RunSummary {
+  computeHealth(totalYielded: number, maxResults: number): RunHealth {
+    const total = this.perKeyword.length;
+    if (total === 0) {
+      return { healthy: false, reason: 'no keywords processed', extractionRate: 0, rateLimitRate: 0 };
+    }
+
+    const rateLimitedCount = this.perKeyword.filter((k) => k.rateLimited).length;
+    const driftCount = this.perKeyword.filter((k) => !k.rateLimited && k.postsFound === 0 && !k.error).length;
+
+    const extractionRate = maxResults > 0 ? totalYielded / maxResults : 0;
+    const rateLimitRate = total > 0 ? rateLimitedCount / total : 0;
+
+    if (extractionRate < 0.3) {
+      return {
+        healthy: false,
+        reason: `low extraction rate: ${(extractionRate * 100).toFixed(0)}% (threshold 30%)`,
+        extractionRate,
+        rateLimitRate,
+      };
+    }
+    if (driftCount / total > 0.5) {
+      return {
+        healthy: false,
+        reason: `selector drift: ${driftCount}/${total} keywords returned 0 posts (not rate-limited)`,
+        extractionRate,
+        rateLimitRate,
+      };
+    }
+    if (rateLimitRate > 0.25) {
+      return {
+        healthy: false,
+        reason: `high rate-limit rate: ${(rateLimitRate * 100).toFixed(0)}% of keywords`,
+        extractionRate,
+        rateLimitRate,
+      };
+    }
+    return { healthy: true, extractionRate, rateLimitRate };
+  }
+
+  async finalize(totalYielded: number): Promise<RunSummary> {
     const completedAt = new Date().toISOString();
     const startMs = new Date(this.startedAt).getTime();
     const durationMs = Date.now() - startMs;
+    const maxResults = this.config?.maxResults ?? 100;
+    const health = this.computeHealth(totalYielded, maxResults);
 
-    return {
+    const errors = this.perKeyword
+      .filter((k) => k.error)
+      .map((k) => ({ keyword: k.keyword, error: k.error }));
+
+    const summary: RunSummary = {
       runId: this.runId,
       startedAt: this.startedAt,
       completedAt,
@@ -122,17 +173,41 @@ export class LinkedInRunSummaryService {
       campaignId: this.config?.campaignId,
       keywords: this.config?.keywords ?? [],
       totalYielded,
+      health,
       perKeyword: [...this.perKeyword],
     };
+
+    if (this.linkedInRunRepo) {
+      try {
+        await this.linkedInRunRepo.create({
+          runId: this.runId,
+          organizationId: summary.organizationId,
+          campaignId: summary.campaignId,
+          startedAt: new Date(this.startedAt),
+          completedAt: new Date(completedAt),
+          durationMs,
+          totalYielded,
+          extractionRate: health.extractionRate,
+          rateLimitRate: health.rateLimitRate,
+          healthy: health.healthy,
+          healthReason: health.reason,
+          selectorVersion: LINKEDIN_SELECTORS.version,
+          perKeyword: this.perKeyword,
+          errors,
+        });
+      } catch (err) {
+        this.logger.error({
+          message: 'Failed to persist LinkedIn run to DB',
+          module: 'linkedin',
+          runId: this.runId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return summary;
   }
 
-  /**
-   * Writes a JSON file containing all collected leads and run metadata.
-   *
-   * If `outputPath` ends with '/' (or is a directory), a timestamped filename
-   * is auto-generated. Otherwise `outputPath` is used as the full file path.
-   * The containing directory is created if it does not exist.
-   */
   async writeLeadsFile(
     leads: RawLeadInput[],
     outputPath: string,

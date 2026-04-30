@@ -18,6 +18,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { JobsModule } from './jobs/jobs.module';
 import { PromptConfigModule } from './prompt-config/prompt-config.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { PromptConfigModule } from './prompt-config/prompt-config.module';
     ComplianceModule,
     JobsModule,
     PromptConfigModule,
+    AdminModule,
     HealthModule,
   ],
 })
