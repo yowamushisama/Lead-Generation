@@ -28,6 +28,7 @@ import {
   DomAuditResult,
 } from '../adapters/linkedin/linkedin-diagnostics.service';
 import { LINKEDIN_SELECTORS } from '../adapters/linkedin/linkedin-selectors.config';
+import { buildSearchUrl } from '../adapters/linkedin/linkedin-search.service';
 import type { Page } from 'playwright';
 
 // ── Minimal in-memory Redis so we don't need a live Redis instance ──────────
@@ -304,7 +305,7 @@ async function main(): Promise<void> {
     const page: Page = await sessionService.getAuthenticatedPage();
 
     // ── Navigate to search ────────────────────────────────────────────────
-    const searchUrl = `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(options.keyword)}&sortBy=date_posted`;
+    const searchUrl = buildSearchUrl(options.keyword, {});
     console.log(`Navigating to: ${searchUrl}`);
 
     await (page as any).goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });

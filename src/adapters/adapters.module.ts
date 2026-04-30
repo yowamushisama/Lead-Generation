@@ -7,6 +7,9 @@ import { LinkedInStealthService } from './linkedin/linkedin-stealth.service';
 import { LinkedInSessionService } from './linkedin/linkedin-session.service';
 import { LinkedInProxyService } from './linkedin/linkedin-proxy.service';
 import { LinkedInDiagnosticsService } from './linkedin/linkedin-diagnostics.service';
+import { LinkedInSearchService } from './linkedin/linkedin-search.service';
+import { LinkedInExtractionService } from './linkedin/linkedin-extraction.service';
+import { LinkedInRunSummaryService } from './linkedin/linkedin-run-summary.service';
 import { GoogleMapsAdapter } from './google-maps/google-maps.adapter';
 import { DatabaseModule } from '../database/database.module';
 
@@ -21,6 +24,9 @@ import { DatabaseModule } from '../database/database.module';
     LinkedInProxyService,
     LinkedInSessionService,
     LinkedInDiagnosticsService,
+    LinkedInSearchService,
+    LinkedInExtractionService,
+    LinkedInRunSummaryService,
     LinkedInAdapter,
     // Google Maps discovery
     GoogleMapsAdapter,

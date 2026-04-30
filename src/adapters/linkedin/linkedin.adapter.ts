@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type { Page } from 'playwright';
 import { BaseAdapter } from '../base.adapter';
 import { AdapterConfig } from '../../common/interfaces/adapter.interface';
 import { RawLeadInput } from '../../common/interfaces/lead-input.interface';
@@ -7,15 +6,10 @@ import { LeadSource } from '../../common/enums/lead-source.enum';
 import { LinkedInStealthService } from './linkedin-stealth.service';
 import { LinkedInSessionService } from './linkedin-session.service';
 import { LinkedInDiagnosticsService } from './linkedin-diagnostics.service';
-import { LINKEDIN_SELECTORS, LinkedInSelectors } from './linkedin-selectors.config';
-
-interface LinkedInPost {
-  authorName: string;
-  authorUrl: string;
-  headline: string;
-  content: string;
-  postedAt: string;
-}
+import { LinkedInSearchService } from './linkedin-search.service';
+import { LinkedInExtractionService } from './linkedin-extraction.service';
+import { LinkedInRunSummaryService } from './linkedin-run-summary.service';
+import { LinkedInAdapterConfig } from './linkedin-adapter.config';
 
 @Injectable()
 export class LinkedInAdapter extends BaseAdapter {
@@ -26,6 +20,9 @@ export class LinkedInAdapter extends BaseAdapter {
     private readonly stealthService: LinkedInStealthService,
     private readonly sessionService: LinkedInSessionService,
     private readonly diagnostics: LinkedInDiagnosticsService,
+    private readonly searchService: LinkedInSearchService,
+    private readonly extractionService: LinkedInExtractionService,
+    private readonly summaryService: LinkedInRunSummaryService,
   ) {
     super();
   }
@@ -48,78 +45,83 @@ export class LinkedInAdapter extends BaseAdapter {
   async *collect(config: AdapterConfig): AsyncGenerator<RawLeadInput> {
     this.validateConfig(config);
 
-    const keywords = config.keywords ?? [];
+    const liConfig = config as LinkedInAdapterConfig;
+    const keywords = liConfig.keywords ?? [];
+
     if (keywords.length === 0) {
       this.logWarn('No keywords configured for LinkedIn adapter', {
-        organizationId: config.organizationId,
+        organizationId: liConfig.organizationId,
       });
       return;
     }
 
-    const maxResults = config.maxResults ?? 100;
+    const maxResults = liConfig.maxResults ?? 100;
+    const searchFilters = liConfig.searchFilters ?? {};
+    const postFilters = liConfig.postFilters ?? {};
+    const scrollSteps = liConfig.scrollSteps ?? 5;
+
     let yielded = 0;
     const seenAuthors = new Set<string>();
+    // Accumulate leads for JSON file output only when outputFile is configured
+    const accumulatedLeads: RawLeadInput[] = liConfig.outputFile ? [] : ([] as never[]);
+
+    this.summaryService.startRun(liConfig);
 
     // Authenticate once — reuse the same page across all keywords.
     // The persistent browser context means LinkedIn sees the same device every time.
-    let page: Page | null = null;
-    try {
-      page = await this.sessionService.getAuthenticatedPage();
+    const page = await this.sessionService.getAuthenticatedPage();
 
+    try {
       for (const keyword of keywords) {
         if (yielded >= maxResults) break;
 
+        const kwStart = Date.now();
+        let kwPostsFound = 0;
+        let kwYielded = 0;
+        let rateLimited = false;
+
         try {
-          const searchUrl = `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(keyword)}&sortBy=date_posted`;
-
-          // Human-like behaviour before navigating
-          await (page as any).mouse.move(
-            Math.floor(Math.random() * 800) + 100,
-            Math.floor(Math.random() * 400) + 100,
+          await this.searchService.navigateToSearch(
+            page,
+            keyword,
+            searchFilters,
+            liConfig.organizationId,
           );
-          await page.waitForTimeout(this.stealthService.randomDelayMs(800, 2000));
-
-          await (page as any).goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
           await this.diagnostics.logPageState(page, {
             phase: 'search-results',
             keyword,
-            organizationId: config.organizationId,
+            organizationId: liConfig.organizationId,
           });
 
-          // Detect and handle rate-limiting / CAPTCHA — log and skip keyword (no browser restart)
-          if (await this.isRateLimited(page)) {
+          rateLimited = await this.searchService.isRateLimited(page);
+          if (rateLimited) {
             this.logWarn('LinkedIn rate limit / checkpoint detected — skipping keyword', {
               keyword,
-              organizationId: config.organizationId,
+              organizationId: liConfig.organizationId,
+            });
+            this.summaryService.recordKeyword(keyword, {
+              postsFound: 0,
+              yielded: 0,
+              durationMs: Date.now() - kwStart,
+              rateLimited: true,
             });
             continue;
           }
 
-          // Wait for at least one post container to appear (JS-rendered)
-          await (page as any)
-            .waitForSelector(LINKEDIN_SELECTORS.waitForPost, { timeout: 10000 })
-            .catch(() => {});
-
-          // Scroll in 5 steps to trigger lazy-loaded post cards
-          for (let i = 0; i < 5; i++) {
-            await (page as any).evaluate(() => window.scrollBy(0, 600));
-            await page.waitForTimeout(this.stealthService.randomDelayMs(600, 1200));
-          }
-
-          // Wait for new content to settle after scrolling
-          await (page as any)
-            .waitForSelector(LINKEDIN_SELECTORS.waitForPost, { timeout: 5000 })
-            .catch(() => {});
+          await this.searchService.scroll(page, scrollSteps);
 
           await this.diagnostics.logSearchDiagnostics(page, {
             phase: 'pre-extract',
             keyword,
-            organizationId: config.organizationId,
+            organizationId: liConfig.organizationId,
           });
 
-          const posts = await this.extractPosts(page);
-          this.log(`Found ${posts.length} posts for keyword: "${keyword}"`, {
-            organizationId: config.organizationId,
+          const rawPosts = await this.extractionService.extractPosts(page);
+          const posts = this.extractionService.applyFilters(rawPosts, postFilters);
+          kwPostsFound = rawPosts.length;
+
+          this.log(`Found ${rawPosts.length} posts (${posts.length} after filters) for keyword: "${keyword}"`, {
+            organizationId: liConfig.organizationId,
           });
 
           for (const post of posts) {
@@ -131,7 +133,7 @@ export class LinkedInAdapter extends BaseAdapter {
 
             await page.waitForTimeout(this.stealthService.randomDelayMs(300, 1000));
 
-            yield {
+            const lead: RawLeadInput = {
               externalId: post.authorUrl || undefined,
               source: LeadSource.LINKEDIN,
               sourceType: 'intent',
@@ -144,169 +146,48 @@ export class LinkedInAdapter extends BaseAdapter {
               metadata: {
                 keyword,
                 postedAt: post.postedAt,
-                campaignId: config.campaignId,
+                campaignId: liConfig.campaignId,
                 scrapedAt: new Date().toISOString(),
               },
             };
+
+            if (liConfig.outputFile) {
+              accumulatedLeads.push(lead);
+            }
+
+            yield lead;
+            kwYielded++;
             yielded++;
           }
         } catch (error) {
+          this.summaryService.recordError(keyword, error);
           this.logError(`Error scraping LinkedIn for keyword: "${keyword}"`, error);
-          // Continue to next keyword — don't abort the whole run
-        }
-      }
-    } catch (error) {
-      this.logError('Failed to establish LinkedIn session', error);
-    } finally {
-      if (page) await (page as any).close().catch(() => {});
-    }
-
-    this.log(`LinkedIn collect complete: ${yielded} leads`, {
-      organizationId: config.organizationId,
-    });
-  }
-
-  private async extractPosts(page: Page): Promise<LinkedInPost[]> {
-    // Selectors are passed from Node context into the browser evaluate — edit
-    // linkedin-selectors.config.ts to fix selector drift without touching this logic.
-    return (page as any).evaluate(
-      (sel: LinkedInSelectors) => {
-        // ── Utility: first matching element from an ordered selector list ──────
-        function firstMatch(parent: Element | Document, selectors: string[]): Element | null {
-          for (const s of selectors) {
-            try {
-              const el = parent.querySelector(s);
-              if (el) return el;
-            } catch {
-              /* skip invalid selector */
-            }
-          }
-          return null;
+          continue;
         }
 
-        // ── Collect post card containers ────────────────────────────────────────
-        let cards: Element[] = [];
-        for (const containerSel of sel.postContainers) {
-          const found = Array.from(document.querySelectorAll(containerSel));
-          if (found.length > 0) {
-            cards = found;
-            break;
-          }
-        }
-        if (cards.length === 0) {
-          // Last resort: [data-urn] elements that contain a text block
-          const requiresSel = sel.postContainerFallbackRequires.join(', ');
-          cards = Array.from(document.querySelectorAll('[data-urn]')).filter((el) =>
-            el.querySelector(requiresSel),
-          );
-        }
-
-        // Deduplicate by urn (nested [data-urn] elements can cause duplicates)
-        const seen = new Set<string>();
-        cards = cards.filter((el) => {
-          const key = el.getAttribute('data-urn') ?? el.outerHTML.slice(0, 100);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
+        this.summaryService.recordKeyword(keyword, {
+          postsFound: kwPostsFound,
+          yielded: kwYielded,
+          durationMs: Date.now() - kwStart,
+          rateLimited,
         });
+      }
+    } finally {
+      await (page as any).close().catch(() => {});
 
-        return cards
-          .map((card) => {
-            // ── Author ────────────────────────────────────────────────────────
-            const nameEl = firstMatch(card, sel.authorName);
+      const summary = this.summaryService.finalize(yielded);
+      this.log('LinkedIn collect run summary', {
+        organizationId: liConfig.organizationId,
+        summary,
+      });
 
-            // Name text — prefer aria-hidden span which holds the rendered text
-            const nameSpan =
-              (nameEl?.querySelector('span[aria-hidden="true"]') as HTMLElement | null) ?? nameEl;
-            let authorName = nameSpan?.textContent?.trim() ?? '';
-
-            // Fallback: parse name from aria-label="View: Name Verified • ..."
-            // The actor meta-link always carries this label with the full name
-            if (!authorName && nameEl) {
-              const label = (nameEl as HTMLElement).getAttribute('aria-label') ?? '';
-              const match = label.match(/^View(?::| )\s*([^•\n]+?)(?:\s+Verified|\s*•|$)/i);
-              if (match) authorName = match[1].trim();
-            }
-
-            // Second fallback: profile image link also has aria-label with name
-            if (!authorName) {
-              const imgLink = firstMatch(card, sel.authorImageLink);
-              if (imgLink) {
-                const label = (imgLink as HTMLElement).getAttribute('aria-label') ?? '';
-                const match = label.match(/^View\s+([^']+?)(?:'s| graphic link)/i);
-                if (match) authorName = match[1].trim();
-              }
-            }
-
-            // Profile href: use the name element if it's an <a>, else look for a link
-            const hrefEl: Element | null =
-              (nameEl instanceof HTMLAnchorElement ? nameEl : null) ??
-              firstMatch(card, sel.authorLink);
-            const rawHref = (hrefEl as HTMLAnchorElement | null)?.getAttribute('href') ?? '';
-
-            let authorUrl = '';
-            if (rawHref.startsWith('/in/')) {
-              authorUrl = rawHref.split('?')[0];
-            } else if (rawHref.includes('linkedin.com/in/')) {
-              try {
-                authorUrl = new URL(rawHref).pathname.split('?')[0];
-              } catch {
-                authorUrl = rawHref.split('?')[0];
-              }
-            }
-
-            // ── Headline ──────────────────────────────────────────────────────
-            const headlineEl = firstMatch(card, sel.headline);
-            const headlineSpan =
-              (headlineEl?.querySelector('span[aria-hidden="true"]') as HTMLElement | null) ??
-              headlineEl;
-            const headline = headlineSpan?.textContent?.trim() ?? '';
-
-            // ── Content ───────────────────────────────────────────────────────
-            const contentEl = firstMatch(card, sel.content);
-            const contentText = (() => {
-              if (!contentEl) return '';
-              // Collect all aria-hidden text segments (LinkedIn duplicates text for a11y)
-              const ariaSpans = contentEl.querySelectorAll('span[aria-hidden="true"]');
-              if (ariaSpans.length > 0) {
-                return Array.from(ariaSpans)
-                  .map((s) => s.textContent?.trim() ?? '')
-                  .filter(Boolean)
-                  .join(' ');
-              }
-              return contentEl.textContent?.trim() ?? '';
-            })();
-
-            // ── Posted-at ─────────────────────────────────────────────────────
-            const timeEl = firstMatch(card, sel.postedAt);
-            const postedAt =
-              (timeEl as HTMLTimeElement | null)?.getAttribute('datetime') ??
-              timeEl?.textContent?.trim() ??
-              '';
-
-            return { authorName, authorUrl, headline, content: contentText, postedAt };
-          })
-          .filter((p) => p.content.length > 10); // require meaningful content; author is optional
-      },
-      LINKEDIN_SELECTORS as unknown as LinkedInSelectors,
-    );
-  }
-
-  private async isRateLimited(page: Page): Promise<boolean> {
-    const url = page.url();
-    const urlBlocked =
-      url.includes('checkpoint') ||
-      url.includes('captcha') ||
-      url.includes('authwall') ||
-      url.includes('challenge');
-    if (urlBlocked) return true;
-
-    // Soft-block detection: LinkedIn may show an inline CAPTCHA/challenge
-    // without changing the URL. Check for known challenge DOM elements.
-    for (const sel of LINKEDIN_SELECTORS.captchaDetection) {
-      const el = await (page as any).$(sel).catch(() => null);
-      if (el) return true;
+      if (liConfig.outputFile && accumulatedLeads.length > 0) {
+        await this.summaryService
+          .writeLeadsFile(accumulatedLeads, liConfig.outputFile, summary)
+          .catch((err: unknown) =>
+            this.logError('Failed to write leads JSON file', err),
+          );
+      }
     }
-    return false;
   }
 }

@@ -1,4 +1,5 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { AppLogger } from '../../common/utils/logger.util';
 import { ConfigService } from '@nestjs/config';
 import { chromium } from 'playwright-extra';
 import type { BrowserContext, Page } from 'playwright';
@@ -22,7 +23,7 @@ chromium.use(createStealthPlugin() as ChromiumPlugin);
 
 @Injectable()
 export class LinkedInStealthService implements OnModuleDestroy {
-  private readonly logger = new Logger(LinkedInStealthService.name);
+  private readonly logger = new AppLogger(LinkedInStealthService.name);
   private context: BrowserContext | null = null;
 
   constructor(private readonly configService: ConfigService) {}

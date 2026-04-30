@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AppLogger } from '../../common/utils/logger.util';
 import { ConfigService } from '@nestjs/config';
 import type { Page } from 'playwright';
 import { RedisService } from '../../database/redis.service';
@@ -13,7 +14,7 @@ const SESSION_TTL_SECONDS = 12 * 60 * 60; // 12 hours
 
 @Injectable()
 export class LinkedInSessionService {
-  private readonly logger = new Logger(LinkedInSessionService.name);
+  private readonly logger = new AppLogger(LinkedInSessionService.name);
 
   constructor(
     private readonly stealthService: LinkedInStealthService,
@@ -108,16 +109,47 @@ export class LinkedInSessionService {
     await this.diagnostics.logPageState(page, { phase: 'login-page', email });
     await page.waitForTimeout(this.stealthService.randomDelayMs(600, 1200));
 
-    // Wait explicitly for form fields — avoids fill() timeout when page redirects
-    await page.waitForSelector('#username', { timeout: 15000 });
-    await page.locator('#username').fill(email);
+    // LinkedIn changed login form IDs to dynamic React-generated values (e.g. :r3:).
+    // Use label-based and autocomplete-based locators — stable across redesigns.
+    // Fallback chain: getByLabel → autocomplete attribute → visible type selector.
+    const emailLocator = page
+      .locator([
+        'input[autocomplete="webauthn"]',
+        'input[autocomplete="username"]',
+        '#username',
+        'input[name="session_key"]',
+        'input[type="text"]:visible',
+      ].join(', '))
+      .first();
+
+    await emailLocator.waitFor({ state: 'visible', timeout: 20000 });
+    await emailLocator.fill(email);
     await page.waitForTimeout(this.stealthService.randomDelayMs(300, 700));
 
-    await page.waitForSelector('#password', { timeout: 10000 });
-    await page.locator('#password').fill(password);
+    const passwordLocator = page
+      .locator([
+        'input[autocomplete="current-password"]',
+        '#password',
+        'input[name="session_password"]',
+        'input[type="password"]:visible',
+      ].join(', '))
+      .first();
+
+    await passwordLocator.waitFor({ state: 'visible', timeout: 10000 });
+    await passwordLocator.fill(password);
     await page.waitForTimeout(this.stealthService.randomDelayMs(400, 900));
 
-    await page.locator('[data-litms-control-urn="login-submit"]').click();
+    // Submit — try old data-attribute first, fall back to visible "Sign in" button
+    const submitLocator = page
+      .locator([
+        '[data-litms-control-urn="login-submit"]',
+        'button[type="submit"]',
+      ].join(', '))
+      .or(page.getByRole('button', { name: /^sign in$/i }))
+      .filter({ hasNot: page.locator('[aria-hidden="true"]') })
+      .first();
+
+    await submitLocator.click();
 
     await page
       .waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 })

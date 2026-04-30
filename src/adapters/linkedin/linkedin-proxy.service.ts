@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AppLogger } from '../../common/utils/logger.util';
 import { ConfigService } from '@nestjs/config';
 
 export interface ProxyConfig {
@@ -10,7 +11,7 @@ export interface ProxyConfig {
 
 @Injectable()
 export class LinkedInProxyService {
-  private readonly logger = new Logger(LinkedInProxyService.name);
+  private readonly logger = new AppLogger(LinkedInProxyService.name);
   private proxies: ProxyConfig[] = [];
   private currentIndex = 0;
 
