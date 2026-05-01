@@ -94,6 +94,12 @@ model Lead {
   rating          Float?
   reviewCount     Int?
   businessType    String?
+  businessHours   Json?
+  lastReviewAt    DateTime?
+  googleTypes     Json?
+  websiteAudit    Json?
+  socialHandles   Json?
+  enrichmentStatus String?
   status          String    @default("NEW")
   consentBasis    String    @default("LEGITIMATE_INTEREST")
   optedOut        Boolean   @default(false)

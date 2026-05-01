@@ -10,6 +10,7 @@ import { IcpProfileRepository } from '../../database/repositories/icp-profile.re
 import { LeadRepository } from '../../database/repositories/lead.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { LeadTier } from '../../common/enums/lead-tier.enum';
+import { LeadSource } from '../../common/enums/lead-source.enum';
 import { OrchestratorService } from '../orchestrator.service';
 import { IntentResult } from '../../common/types/intent.types';
 import { ICPConfig } from '../../common/types/icp.types';
@@ -54,25 +55,59 @@ export class ScoringProcessor extends WorkerHost {
         technicalLevel: (lead.icpAttributes as Record<string, string>)?.technicalLevel,
       };
 
-      // Load active ICP config if campaign has one
+      const isDiscovery = lead.sourceType === 'discovery';
+      const isGoogleMaps = lead.source === LeadSource.GOOGLE_MAPS;
+
+      // Single campaign load — used for ICP config, track override, and target industries
       let icpConfig: ICPConfig | undefined;
+      let scoringTrack: 'intent' | 'discovery' | 'opportunity' = isDiscovery ? 'discovery' : 'intent';
+      let targetIndustriesForScoring: string[] | undefined;
+
       if (campaignId) {
         const campaign = await this.campaignRepository.findUnique({ where: { id: campaignId } });
+
         if (campaign?.icpProfileId) {
           const icpProfile = await this.icpProfileRepository.findUnique({
             where: { id: campaign.icpProfileId },
           });
           icpConfig = icpProfile?.config as ICPConfig | undefined;
         }
-      }
 
-      const isDiscovery = lead.sourceType === 'discovery';
+        const campaignSettings = (campaign?.settings as Record<string, unknown> | null) ?? {};
+        const trackOverride = campaignSettings['campaignTrack'] as string | undefined;
+        if (trackOverride) {
+          scoringTrack = trackOverride as typeof scoringTrack;
+        } else if (isGoogleMaps) {
+          scoringTrack = 'opportunity';
+        }
+
+        if (isGoogleMaps) {
+          targetIndustriesForScoring = (campaign?.targetIndustries as string[] | null) ?? [];
+        }
+      } else if (isGoogleMaps) {
+        scoringTrack = 'opportunity';
+      }
 
       const discoveryMetadata = isDiscovery
         ? {
             rating: lead.rating ?? undefined,
             reviewCount: lead.reviewCount ?? undefined,
           }
+        : undefined;
+
+      const digitalGap = isGoogleMaps
+        ? {
+            enrichmentStatus: (lead as any).enrichmentStatus ?? undefined,
+            websiteAudit: (lead as any).websiteAudit ?? undefined,
+            socialHandles: (lead as any).socialHandles ?? undefined,
+            rating: lead.rating ?? undefined,
+            reviewCount: lead.reviewCount ?? undefined,
+            lastReviewAt: (lead as any).lastReviewAt ?? undefined,
+          }
+        : undefined;
+
+      const googleTypes = isGoogleMaps
+        ? ((lead as any).googleTypes as string[] | null) ?? []
         : undefined;
 
       const output = await this.scorerStage.process(
@@ -85,8 +120,11 @@ export class ScoringProcessor extends WorkerHost {
           location: lead.location ?? undefined,
           originalContent: lead.originalContent ?? undefined,
           icpConfig,
-          scoringTrack: isDiscovery ? 'discovery' : 'intent',
+          scoringTrack,
           discoveryMetadata,
+          digitalGap,
+          googleTypes,
+          targetIndustries: targetIndustriesForScoring,
         },
         context,
       );

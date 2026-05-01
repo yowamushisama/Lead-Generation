@@ -1,52 +1,72 @@
 import { Test } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { GoogleMapsAdapter } from './google-maps.adapter';
+import { GmapsSearchService } from './gmaps-search.service';
+import { GmapsExtractionService } from './gmaps-extraction.service';
 import { LeadSource } from '../../common/enums/lead-source.enum';
+import type { GmapsPlace } from './gmaps-extraction.types';
 
-// Mock @googlemaps/google-maps-services-js
-jest.mock('@googlemaps/google-maps-services-js', () => ({
-  Client: jest.fn().mockImplementation(() => ({
-    textSearch: jest.fn().mockResolvedValue({
-      status: 200,
-      data: {
-        results: [
-          {
-            place_id: 'place_001',
-            name: 'Acme Plumbing',
-            formatted_address: '123 Main St, Austin, TX',
-            rating: 4.6,
-            user_ratings_total: 210,
-          },
-          {
-            place_id: 'place_002',
-            name: 'Best Pipes Co',
-            formatted_address: '456 Oak Ave, Austin, TX',
-            rating: 3.9,
-            user_ratings_total: 45,
-          },
-        ],
-        next_page_token: undefined,
-      },
-    }),
-  })),
-}));
+const mockPlace = (overrides: Partial<GmapsPlace> = {}): GmapsPlace => ({
+  placeId: 'ChIJtest1234',
+  name: 'Acme Plumbing',
+  rating: 4.6,
+  reviewCount: 210,
+  category: 'Plumber',
+  googleTypes: ['Plumber'],
+  address: '123 Main St, Austin, TX',
+  phone: '+15125550001',
+  website: 'https://acmeplumbing.example.com',
+  businessHours: { monday: '8 AM–5 PM' },
+  lastReviewAt: '2026-04-01T00:00:00.000Z',
+  socialHandles: {},
+  sourceUrl: 'https://www.google.com/maps/place/Acme+Plumbing/data=test',
+  ...overrides,
+});
 
 describe('GoogleMapsAdapter', () => {
   let adapter: GoogleMapsAdapter;
+  let searchService: jest.Mocked<GmapsSearchService>;
+  let extractionService: jest.Mocked<GmapsExtractionService>;
 
   beforeEach(async () => {
+    const mockPage = {
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+
+    searchService = {
+      newPage: jest.fn().mockResolvedValue(mockPage),
+      buildSearchUrl: jest.fn().mockReturnValue('https://www.google.com/maps/search/plumber+in+Austin'),
+      navigateToSearch: jest.fn().mockResolvedValue(undefined),
+      scrollFeed: jest.fn().mockResolvedValue(undefined),
+      collectListingUrls: jest.fn().mockResolvedValue([
+        'https://www.google.com/maps/place/Acme+Plumbing/data=test1',
+        'https://www.google.com/maps/place/Best+Pipes/data=test2',
+      ]),
+      safeUrl: jest.fn().mockReturnValue('https://www.google.com/maps/search/...'),
+    } as unknown as jest.Mocked<GmapsSearchService>;
+
+    extractionService = {
+      extractFromUrl: jest.fn()
+        .mockResolvedValueOnce(mockPlace())
+        .mockResolvedValueOnce(mockPlace({
+          placeId: 'ChIJtest5678',
+          name: 'Best Pipes Co',
+          rating: 3.9,
+          reviewCount: 45,
+          address: '456 Oak Ave, Austin, TX',
+          website: null,
+          phone: null,
+          socialHandles: {},
+        })),
+      extractDetailPage: jest.fn(),
+      extractTiles: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<GmapsExtractionService>;
+
     const module = await Test.createTestingModule({
       providers: [
         GoogleMapsAdapter,
-        {
-          provide: ConfigService,
-          useValue: {
-            get: (key: string, def?: string) => {
-              if (key === 'GOOGLE_MAPS_API_KEY') return 'test-api-key';
-              return def;
-            },
-          },
-        },
+        { provide: GmapsSearchService, useValue: searchService },
+        { provide: GmapsExtractionService, useValue: extractionService },
       ],
     }).compile();
 
@@ -58,16 +78,22 @@ describe('GoogleMapsAdapter', () => {
     expect(adapter.sourceType).toBe('discovery');
   });
 
-  it('maps Places API results to RawLeadInput correctly', async () => {
-    const results: any[] = [];
-    const gen = adapter.collect({
-      organizationId: 'org-1',
-      locations: ['Austin, TX'],
-      industries: ['plumbing'],
-      maxResults: 10,
-    });
+  it('yields no leads when locations or industries are empty', async () => {
+    const results: unknown[] = [];
+    for await (const lead of adapter.collect({ organizationId: 'org-1' })) {
+      results.push(lead);
+    }
+    expect(results).toHaveLength(0);
+  });
 
-    for await (const lead of gen) {
+  it('maps scraped places to RawLeadInput correctly', async () => {
+    const results: any[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      maxResults: 10,
+    })) {
       results.push(lead);
     }
 
@@ -77,37 +103,65 @@ describe('GoogleMapsAdapter', () => {
     expect(first.source).toBe(LeadSource.GOOGLE_MAPS);
     expect(first.sourceType).toBe('discovery');
     expect(first.name).toBe('Acme Plumbing');
-    expect(first.externalId).toBe('place_001');
+    expect(first.externalId).toBe('ChIJtest1234');
     expect(first.location).toBe('123 Main St, Austin, TX');
+    expect(first.website).toBe('https://acmeplumbing.example.com');
+    expect(first.phone).toBe('+15125550001');
     expect(first.metadata).toMatchObject({
       rating: 4.6,
       reviewCount: 210,
-      placeId: 'place_001',
+      placeId: 'ChIJtest1234',
+      googleTypes: ['Plumber'],
     });
-  });
-
-  it('yields no leads when locations/industries are empty', async () => {
-    const results: any[] = [];
-    const gen = adapter.collect({ organizationId: 'org-1' });
-    for await (const lead of gen) {
-      results.push(lead);
-    }
-    expect(results).toHaveLength(0);
   });
 
   it('respects maxResults limit', async () => {
-    const results: any[] = [];
-    const gen = adapter.collect({
+    const results: unknown[] = [];
+    for await (const lead of adapter.collect({
       organizationId: 'org-1',
-      locations: ['Austin, TX'],
-      industries: ['plumbing'],
+      industries: ['plumber'],
+      locations: ['Austin TX'],
       maxResults: 1,
-    });
+    })) {
+      results.push(lead);
+    }
+    expect(results).toHaveLength(1);
+  });
 
-    for await (const lead of gen) {
+  it('falls back externalId to sourceUrl when placeId is null', async () => {
+    extractionService.extractFromUrl.mockReset();
+    extractionService.extractFromUrl.mockResolvedValue(mockPlace({ placeId: null }));
+
+    const results: any[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      maxResults: 1,
+    })) {
       results.push(lead);
     }
 
+    expect(results[0].externalId).toBe('https://www.google.com/maps/place/Acme+Plumbing/data=test');
+  });
+
+  it('skips places with no name', async () => {
+    extractionService.extractFromUrl.mockReset();
+    extractionService.extractFromUrl
+      .mockResolvedValueOnce(mockPlace({ name: '' }))
+      .mockResolvedValueOnce(mockPlace({ placeId: 'ChIJtest5678', name: 'Best Pipes Co' }));
+
+    const results: unknown[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      maxResults: 10,
+    })) {
+      results.push(lead);
+    }
+
+    // first result skipped (empty name), second yielded
     expect(results).toHaveLength(1);
   });
 });

@@ -93,6 +93,7 @@ export class CampaignsService {
           linkedChannels: dto.linkedChannels ?? [],
           outreachTone: dto.outreachTone ?? 'professional',
           approvalMode: dto.approvalMode ?? 'manual',
+          campaignTrack: dto.campaignTrack ?? null,
         },
         isActive: !isDraft,
         status: isDraft ? 'DRAFT' : 'ACTIVE',
@@ -185,6 +186,7 @@ export class CampaignsService {
       settingsPatch.autoApproveWarm = dto.approvalMode !== 'manual';
     }
     if (dto.autoApproveWarm !== undefined) settingsPatch.autoApproveWarm = dto.autoApproveWarm;
+    if (dto.campaignTrack !== undefined) settingsPatch.campaignTrack = dto.campaignTrack;
 
     if (Object.keys(settingsPatch).length > 0) {
       topLevelData.settings = { ...existingSettings, ...settingsPatch };

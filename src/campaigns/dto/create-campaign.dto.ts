@@ -113,6 +113,16 @@ export class CreateCampaignDto {
   @IsBoolean()
   startAsDraft?: boolean;
 
+  @ApiPropertyOptional({
+    description: 'Scoring track for leads from this campaign. Defaults: GOOGLE_MAPS→opportunity, LINKEDIN→intent, CSV→discovery.',
+    enum: ['intent', 'discovery', 'opportunity'],
+    example: 'opportunity',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['intent', 'discovery', 'opportunity'])
+  campaignTrack?: string;
+
   @ApiPropertyOptional({ description: 'UUID of a reusable prompt config from the library to attach to this campaign', format: 'uuid' })
   @IsOptional()
   @IsUUID()

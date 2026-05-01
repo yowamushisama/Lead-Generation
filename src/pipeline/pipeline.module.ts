@@ -10,6 +10,7 @@ import { PromptConfigModule } from '../prompt-config/prompt-config.module';
 // Stages
 import { IntentDetectorStage } from './stages/intent-detector.stage';
 import { ICPEnricherStage } from './stages/icp-enricher.stage';
+import { WebsiteEnricherStage } from './stages/website-enricher.stage';
 import { LeadScorerStage } from './stages/lead-scorer.stage';
 import { PersonalizerStage } from './stages/personalizer.stage';
 import { OutreachGeneratorStage } from './stages/outreach-generator.stage';
@@ -65,6 +66,7 @@ import { OutreachProcessor } from './processors/outreach.processor';
     // Stages
     IntentDetectorStage,
     ICPEnricherStage,
+    WebsiteEnricherStage,
     LeadScorerStage,
     PersonalizerStage,
     OutreachGeneratorStage,

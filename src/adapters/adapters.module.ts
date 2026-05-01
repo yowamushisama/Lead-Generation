@@ -12,6 +12,9 @@ import { LinkedInExtractionService } from './linkedin/linkedin-extraction.servic
 import { LinkedInRunSummaryService } from './linkedin/linkedin-run-summary.service';
 import { LinkedInAlertService } from './linkedin/linkedin-alert.service';
 import { GoogleMapsAdapter } from './google-maps/google-maps.adapter';
+import { GmapsSearchService } from './google-maps/gmaps-search.service';
+import { GmapsExtractionService } from './google-maps/gmaps-extraction.service';
+import { PlaywrightStealthService } from './shared/playwright-stealth.service';
 import { DatabaseModule } from '../database/database.module';
 
 @Module({
@@ -20,6 +23,8 @@ import { DatabaseModule } from '../database/database.module';
     AdapterRegistryService,
     CsvAdapter,
     WebhookAdapter,
+    // Shared browser infra
+    PlaywrightStealthService,
     // LinkedIn scraping stack
     LinkedInStealthService,
     LinkedInProxyService,
@@ -30,7 +35,9 @@ import { DatabaseModule } from '../database/database.module';
     LinkedInRunSummaryService,
     LinkedInAlertService,
     LinkedInAdapter,
-    // Google Maps discovery
+    // Google Maps Playwright UI scraper
+    GmapsSearchService,
+    GmapsExtractionService,
     GoogleMapsAdapter,
   ],
   exports: [AdapterRegistryService],

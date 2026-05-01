@@ -55,6 +55,10 @@ export class IntentProcessor extends WorkerHost {
               placeId: meta.placeId as string | undefined,
               rating: meta.rating as number | undefined,
               reviewCount: meta.reviewCount as number | undefined,
+              googleTypes: (meta.googleTypes as string[] | undefined) ?? undefined,
+              businessHours: (meta.businessHours as object | undefined) ?? undefined,
+              lastReviewAt: meta.lastReviewAt ? new Date(meta.lastReviewAt as string) : undefined,
+              socialHandles: (meta.socialHandlesFromGmaps as object | undefined) ?? undefined,
             }),
             campaignId,
             status: LeadStatus.NEW,
@@ -66,10 +70,10 @@ export class IntentProcessor extends WorkerHost {
         resolvedLeadId = lead.id;
       }
 
-      // Discovery leads carry no post content for intent classification — route
-      // them directly to scoring via the discovery track.
+      // Discovery leads carry no post content for intent classification — skip
+      // intent classification but still run enrichment (website audit) before scoring.
       if (rawInput?.sourceType === 'discovery') {
-        await this.orchestrator.enqueueForStage(resolvedLeadId, 'score', context, { campaignId });
+        await this.orchestrator.enqueueForStage(resolvedLeadId, 'enrich', context, { campaignId });
         return;
       }
 

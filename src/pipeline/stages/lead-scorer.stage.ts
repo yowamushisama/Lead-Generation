@@ -6,6 +6,7 @@ import { IntentResult } from '../../common/types/intent.types';
 import { ScoringResult } from '../../common/types/scoring.types';
 import { ICPConfig } from '../../common/types/icp.types';
 import { DiscoveryMetadata } from '../../scoring/factors/discovery-score-factor';
+import { DigitalGapInput } from '../../scoring/factors/digital-gap-factor';
 
 export interface LeadScorerInput {
   leadId: string;
@@ -17,10 +18,12 @@ export interface LeadScorerInput {
   originalContent?: string;
   postedAt?: Date | string;
   icpConfig?: ICPConfig;
-  /** 'intent' (default) or 'discovery' — determines which scoring track to use */
   scoringTrack?: ScoringTrack;
-  /** Populated for discovery-track leads (Google Maps, CSV) */
   discoveryMetadata?: DiscoveryMetadata;
+  /** Opportunity-track inputs (Google Maps leads) */
+  digitalGap?: DigitalGapInput;
+  googleTypes?: string[];
+  targetIndustries?: string[];
 }
 
 export interface LeadScorerOutput {
@@ -50,13 +53,18 @@ export class LeadScorerStage implements IPipelineStage<LeadScorerInput, LeadScor
         postedAt: input.postedAt,
         icpConfig: input.icpConfig,
         discoveryMetadata: input.discoveryMetadata,
+        digitalGap: input.digitalGap,
+        googleTypes: input.googleTypes,
+        targetIndustries: input.targetIndustries,
       },
       track,
     );
 
-    // Discovery leads bypass intent-confidence threshold — they have no intent signals
+    // Discovery and opportunity leads bypass intent-confidence threshold
     const meetsThreshold =
-      track === 'discovery' ? true : this.scoringEngine.meetsConfidenceThreshold(input.intent);
+      track === 'discovery' || track === 'opportunity'
+        ? true
+        : this.scoringEngine.meetsConfidenceThreshold(input.intent);
 
     this.logger.log({
       message: `Lead scored: ${scoring.score} (${scoring.tier}) [track: ${track}]`,

@@ -1,0 +1,244 @@
+import { Injectable } from '@nestjs/common';
+import type { Page } from 'playwright';
+import { AppLogger } from '../../common/utils/logger.util';
+import { PlaywrightStealthService } from '../shared/playwright-stealth.service';
+import { GMAPS_SELECTORS, GmapsSelectors } from './gmaps-selectors.config';
+import { GmapsPlace } from './gmaps-extraction.types';
+import { parseRelativeDate } from './gmaps-extraction.config';
+
+export { GmapsPlace } from './gmaps-extraction.types';
+
+@Injectable()
+export class GmapsExtractionService {
+  private readonly logger = new AppLogger(GmapsExtractionService.name);
+
+  constructor(private readonly stealthService: PlaywrightStealthService) {}
+
+  /**
+   * Extract full place data from an already-loaded detail panel.
+   * The page must already be on the place detail URL before calling this.
+   */
+  async extractDetailPage(page: Page): Promise<Omit<GmapsPlace, 'sourceUrl'>> {
+    await (page as any)
+      .waitForSelector(GMAPS_SELECTORS.waitForDetail, { timeout: 10000 })
+      .catch(() => {});
+
+    // Expand the hours section so the table is visible in the DOM
+    for (const sel of GMAPS_SELECTORS.detailHoursButton) {
+      try {
+        const btn = await (page as any).$(sel);
+        if (btn) {
+          await btn.click();
+          await page.waitForTimeout(600);
+          break;
+        }
+      } catch { /* not present — skip */ }
+    }
+
+    const raw = await (page as any).evaluate((sel: GmapsSelectors) => {
+      function firstMatch(parent: Element | Document, selectors: string[]): Element | null {
+        for (const s of selectors) {
+          try { const el = parent.querySelector(s); if (el) return el; } catch { /* skip */ }
+        }
+        return null;
+      }
+
+      function firstMatchAll(parent: Element | Document, selectors: string[]): Element[] {
+        for (const s of selectors) {
+          try {
+            const els = Array.from(parent.querySelectorAll(s));
+            if (els.length > 0) return els;
+          } catch { /* skip */ }
+        }
+        return [];
+      }
+
+      function text(el: Element | null): string {
+        return el?.textContent?.trim() ?? '';
+      }
+
+      // ── Name ────────────────────────────────────────────────────────────────
+      const name = text(firstMatch(document, sel.detailName));
+
+      // ── Rating ──────────────────────────────────────────────────────────────
+      const ratingText = text(firstMatch(document, sel.detailRating));
+      const rating = ratingText ? parseFloat(ratingText) : null;
+
+      // ── Review count ─────────────────────────────────────────────────────────
+      const reviewEl = firstMatch(document, sel.detailReviewCount);
+      const reviewLabel = reviewEl?.getAttribute('aria-label') ?? text(reviewEl);
+      const reviewMatch = reviewLabel.match(/[\d,]+/);
+      const reviewCount = reviewMatch ? parseInt(reviewMatch[0].replace(/,/g, ''), 10) : null;
+
+      // ── Place ID from URL ─────────────────────────────────────────────────────
+      // Extract the canonical ChIJ... Place ID from the !19s segment
+      const chijMatch = window.location.href.match(/!19s(ChIJ[A-Za-z0-9_-]+)/);
+      const placeId = chijMatch ? chijMatch[1] : null;
+
+      // ── Categories / types ────────────────────────────────────────────────────
+      const categoryEls = firstMatchAll(document, sel.detailCategories);
+      const googleTypes = categoryEls.map((el) => text(el)).filter(Boolean);
+      const category = googleTypes[0] ?? null;
+
+      // ── Address ───────────────────────────────────────────────────────────────
+      const addrEl = firstMatch(document, sel.detailAddress);
+      const address =
+        addrEl?.getAttribute('aria-label') ??
+        addrEl?.getAttribute('data-tooltip') ??
+        text(addrEl);
+
+      // ── Website ───────────────────────────────────────────────────────────────
+      const websiteEl = firstMatch(document, sel.detailWebsite) as HTMLAnchorElement | null;
+      const website = websiteEl?.href ?? null;
+
+      // ── Phone ─────────────────────────────────────────────────────────────────
+      const phoneEl = firstMatch(document, sel.detailPhone);
+      const phone =
+        phoneEl?.getAttribute('data-item-id')?.replace('phone:tel:', '') ??
+        (phoneEl as HTMLAnchorElement | null)?.href?.replace('tel:', '') ??
+        phoneEl?.getAttribute('aria-label') ??
+        null;
+
+      // ── Hours ─────────────────────────────────────────────────────────────────
+      const hoursEl = firstMatch(document, sel.detailHours);
+      let businessHours: Record<string, string> | null = null;
+      if (hoursEl) {
+        // Try structured table first (present after clicking the expand button)
+        const table = hoursEl.tagName === 'TABLE' ? hoursEl : hoursEl.querySelector('table');
+        const rows = table ? Array.from(table.querySelectorAll('tr')) : [];
+        if (rows.length > 0) {
+          businessHours = {};
+          for (const row of rows) {
+            const cells = Array.from(row.querySelectorAll('td, th'));
+            if (cells.length >= 2) {
+              const day = text(cells[0]).toLowerCase().replace(/[^a-z]/g, '');
+              const hours = text(cells[1]);
+              if (day && hours) businessHours[day] = hours;
+            }
+          }
+          // Discard if we got no real rows
+          if (Object.keys(businessHours).length === 0) businessHours = null;
+        }
+        // Fall back to raw open/close summary text
+        if (!businessHours) {
+          const raw = text(hoursEl);
+          if (raw) businessHours = { raw };
+        }
+      }
+
+      // ── Last review timestamp ─────────────────────────────────────────────────
+      const reviewCards = firstMatchAll(document, sel.reviewCards);
+      let lastReviewRaw: string | null = null;
+      if (reviewCards.length > 0) {
+        const tsEl = firstMatch(reviewCards[0], sel.reviewTimestamp);
+        lastReviewRaw = text(tsEl) || null;
+      }
+
+      // ── Social links ──────────────────────────────────────────────────────────
+      const igEl = firstMatch(document, sel.socialInstagram) as HTMLAnchorElement | null;
+      const fbEl = firstMatch(document, sel.socialFacebook) as HTMLAnchorElement | null;
+      const ttEl = firstMatch(document, sel.socialTikTok) as HTMLAnchorElement | null;
+
+      return {
+        name,
+        rating,
+        reviewCount,
+        placeId,
+        googleTypes,
+        category,
+        address: address || null,
+        website,
+        phone: phone || null,
+        businessHours,
+        lastReviewRaw,
+        socialInstagram: igEl?.href ?? null,
+        socialFacebook: fbEl?.href ?? null,
+        socialTikTok: ttEl?.href ?? null,
+      };
+    }, GMAPS_SELECTORS as unknown as GmapsSelectors);
+
+    const lastReviewAt = raw.lastReviewRaw ? parseRelativeDate(raw.lastReviewRaw) : null;
+
+    const socialHandles: GmapsPlace['socialHandles'] = {};
+    if (raw.socialInstagram) socialHandles.instagram = raw.socialInstagram;
+    if (raw.socialFacebook) socialHandles.facebook = raw.socialFacebook;
+    if (raw.socialTikTok) socialHandles.tiktok = raw.socialTikTok;
+
+    return {
+      placeId: raw.placeId,
+      name: raw.name || 'Unknown Business',
+      rating: raw.rating,
+      reviewCount: raw.reviewCount,
+      category: raw.category,
+      googleTypes: raw.googleTypes,
+      address: raw.address,
+      phone: raw.phone,
+      website: raw.website,
+      businessHours: raw.businessHours,
+      lastReviewAt,
+      socialHandles,
+    };
+  }
+
+  /**
+   * Navigate to a listing URL, extract detail, then navigate back.
+   */
+  async extractFromUrl(page: Page, url: string): Promise<GmapsPlace | null> {
+    try {
+      await (page as any).goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.waitForTimeout(this.stealthService.randomDelayMs(800, 2000));
+
+      const data = await this.extractDetailPage(page);
+      return { ...data, sourceUrl: url };
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to extract place detail',
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Extract tile-level data for all currently-visible listing cards without
+   * clicking into each one. Used when `fetchDetails=false`.
+   */
+  async extractTiles(page: Page): Promise<Array<{ name: string; rating: number | null; reviewCount: number | null; category: string | null; url: string }>> {
+    return (page as any).evaluate((sel: GmapsSelectors) => {
+      function firstMatch(parent: Element | Document, selectors: string[]): Element | null {
+        for (const s of selectors) {
+          try { const el = parent.querySelector(s); if (el) return el; } catch { /* skip */ }
+        }
+        return null;
+      }
+
+      function text(el: Element | null): string { return el?.textContent?.trim() ?? ''; }
+
+      const tiles: Element[] = (() => {
+        for (const s of sel.listingCards) {
+          try {
+            const els = Array.from(document.querySelectorAll(s));
+            if (els.length > 0) return els;
+          } catch { /* skip */ }
+        }
+        return [];
+      })();
+
+      return tiles.map((tile) => {
+        const nameText = text(firstMatch(tile, sel.tileName));
+        const ratingText = text(firstMatch(tile, sel.tileRating));
+        const reviewText = text(firstMatch(tile, sel.tileReviewCount));
+        const categoryText = text(firstMatch(tile, sel.tileCategory));
+        const a = tile.tagName === 'A' ? tile : tile.querySelector('a[href*="/maps/place/"]');
+        const href = (a as HTMLAnchorElement | null)?.href ?? '';
+
+        const reviewMatch = reviewText.replace(/[(),]/g, '').match(/[\d,]+/);
+        const reviewCount = reviewMatch ? parseInt(reviewMatch[0].replace(/,/g, ''), 10) : null;
+        const rating = ratingText ? parseFloat(ratingText) : null;
+
+        return { name: nameText || 'Unknown', rating, reviewCount, category: categoryText || null, url: href };
+      }).filter((t) => t.url);
+    }, GMAPS_SELECTORS as unknown as GmapsSelectors);
+  }
+}
