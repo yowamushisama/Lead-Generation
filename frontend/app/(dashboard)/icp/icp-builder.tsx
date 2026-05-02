@@ -2,24 +2,26 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Target, ChevronDown, ChevronRight, X, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, Target, ChevronDown, ChevronRight, X, Sparkles, Loader2, Pencil } from 'lucide-react';
 import { icp as icpApi } from '@/lib/api-client';
 import type { ICPProfile, ICPConfig } from '@/models';
 import { Card } from '@/components/ui/card';
 import { TagInput } from '@/components/ui/tag-input';
-import { cn } from '@/lib/utils';
+import { cn, mergeUnique } from '@/lib/utils';
+import { SCORING_FACTORS, COMPANY_STAGES } from '@/constants';
 
-const SCORING_FACTORS = [
-  { key: 'intent',   label: 'Intent Strength',  color: '#06B6D4', max: 30 },
-  { key: 'urgency',  label: 'Urgency Signals',   color: '#EF4444', max: 15 },
-  { key: 'role',     label: 'Role Fit',          color: '#7C3AED', max: 20 },
-  { key: 'recency',  label: 'Recency',           color: '#F59E0B', max: 15 },
-  { key: 'budget',   label: 'Budget Indicators', color: '#10B981', max: 15 },
-  { key: 'icp',      label: 'ICP Fit',           color: '#F97316', max: 20 },
-  { key: 'negative', label: 'Negative Signals',  color: '#94A3B8', max: -30 },
-];
+const EMPTY_CONFIG: ICPConfig = {
+  targetRoles: [],
+  targetIndustries: [],
+  targetStages: [],
+  targetLocations: [],
+  buyerSignals: [],
+  urgencySignals: [],
+  budgetSignals: [],
+};
 
-const COMPANY_STAGES = ['pre-seed', 'seed', 'series-a', 'series-b', 'growth', 'enterprise'];
+const DEFAULT_WEIGHTS = Object.fromEntries(SCORING_FACTORS.map((f) => [f.key, Math.abs(f.max)]));
+
 
 export function ICPBuilder() {
   const queryClient = useQueryClient();
@@ -27,43 +29,69 @@ export function ICPBuilder() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
-  const [newConfig, setNewConfig] = useState<ICPConfig>({
-    targetRoles: [],
-    targetIndustries: [],
-    targetStages: [],
-    targetLocations: [],
-    buyerSignals: [],
-    urgencySignals: [],
-    budgetSignals: [],
-  });
-  const [weights, setWeights] = useState<Record<string, number>>(
-    Object.fromEntries(SCORING_FACTORS.map((f) => [f.key, Math.abs(f.max)])),
-  );
+  const [newIsActive, setNewIsActive] = useState(true);
+  const [newConfig, setNewConfig] = useState<ICPConfig>(EMPTY_CONFIG);
+  const [weights, setWeights] = useState<Record<string, number>>(DEFAULT_WEIGHTS);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
+
+  // ── Form lifecycle ──────────────────────────────────────────────────────────
+
+  const handleCloseForm = () => {
+    setShowCreate(false);
+    setEditingId(null);
+    setNewName('');
+    setNewIsActive(true);
+    setNewConfig(EMPTY_CONFIG);
+    setWeights(DEFAULT_WEIGHTS);
+    setEnhanceError(null);
+  };
+
+  const handleStartEdit = (profile: ICPProfile) => {
+    setEditingId(profile.id);
+    setShowCreate(false);
+    setExpandedId(null);
+    setNewName(profile.name);
+    setNewIsActive(profile.isActive);
+    setNewConfig({
+      targetRoles:      profile.config?.targetRoles      ?? [],
+      targetIndustries: profile.config?.targetIndustries ?? [],
+      targetStages:     profile.config?.targetStages     ?? [],
+      targetLocations:  profile.config?.targetLocations  ?? [],
+      buyerSignals:     profile.config?.buyerSignals     ?? [],
+      urgencySignals:   profile.config?.urgencySignals   ?? [],
+      budgetSignals:    profile.config?.budgetSignals    ?? [],
+    });
+  };
+
+  // ── AI enhance — merges suggestions into existing fields ────────────────────
 
   const handleEnhance = async () => {
     if (!newName.trim() || isEnhancing) return;
     setIsEnhancing(true);
     setEnhanceError(null);
     try {
-      const config = await icpApi.enhance(newName.trim());
-      setNewConfig({
-        targetRoles:      config.targetRoles      ?? [],
-        targetIndustries: config.targetIndustries ?? [],
-        targetLocations:  config.targetLocations  ?? [],
-        targetStages:     (config.targetStages    ?? []).filter((s) => COMPANY_STAGES.includes(s)),
-        buyerSignals:     config.buyerSignals     ?? [],
-        urgencySignals:   config.urgencySignals   ?? [],
-        budgetSignals:    config.budgetSignals    ?? [],
-      });
+      const suggested = await icpApi.enhance(newName.trim());
+      setNewConfig((prev) => ({
+        targetRoles:      mergeUnique(prev.targetRoles      ?? [], suggested.targetRoles),
+        targetIndustries: mergeUnique(prev.targetIndustries ?? [], suggested.targetIndustries),
+        targetLocations:  mergeUnique(prev.targetLocations  ?? [], suggested.targetLocations),
+        targetStages:     mergeUnique(
+          prev.targetStages ?? [],
+          (suggested.targetStages ?? []).filter((s): s is typeof COMPANY_STAGES[number] => (COMPANY_STAGES as readonly string[]).includes(s)),
+        ),
+        buyerSignals:     mergeUnique(prev.buyerSignals     ?? [], suggested.buyerSignals),
+        urgencySignals:   mergeUnique(prev.urgencySignals   ?? [], suggested.urgencySignals),
+        budgetSignals:    mergeUnique(prev.budgetSignals    ?? [], suggested.budgetSignals),
+      }));
     } catch {
-      // Form is untouched — existing fields are preserved
       setEnhanceError('AI enhancement failed. Please try again.');
     } finally {
       setIsEnhancing(false);
     }
   };
+
+  // ── Data & mutations ────────────────────────────────────────────────────────
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['icp'],
@@ -74,10 +102,24 @@ export function ICPBuilder() {
     mutationFn: () => icpApi.create({ name: newName, config: newConfig }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['icp'] });
-      setShowCreate(false);
-      setNewName('');
+      handleCloseForm();
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      icpApi.update(editingId!, { name: newName, config: newConfig, isActive: newIsActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['icp'] });
+      handleCloseForm();
+    },
+  });
+
+  const isEditing   = editingId !== null;
+  const isSaving    = createMutation.isPending || updateMutation.isPending;
+  const showForm    = showCreate || isEditing;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -87,7 +129,7 @@ export function ICPBuilder() {
           <p className="mt-0.5 font-mono text-[11px] text-mist">Configure Ideal Customer Profiles</p>
         </div>
         <button
-          onClick={() => setShowCreate(!showCreate)}
+          onClick={() => { handleCloseForm(); setShowCreate(true); }}
           className="flex items-center gap-2 rounded-lg bg-aqua/10 px-4 py-2 font-mono text-[12px] font-500 text-aqua ring-1 ring-aqua/20 hover:bg-aqua/15 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -95,18 +137,21 @@ export function ICPBuilder() {
         </button>
       </div>
 
-      {/* Create panel */}
-      {showCreate && (
+      {/* Create / Edit panel */}
+      {showForm && (
         <Card className="border-aqua/15 mt-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-[14px] font-600 text-ink">New ICP Profile</h2>
+            <h2 className="font-display text-[14px] font-600 text-ink">
+              {isEditing ? 'Edit ICP Profile' : 'New ICP Profile'}
+            </h2>
             <button
-              onClick={() => setShowCreate(false)}
+              onClick={handleCloseForm}
               className="flex items-center justify-center h-7 w-7 rounded-lg border border-ink/[0.08] bg-elevated text-dusk hover:border-ink/20 hover:text-mist transition-colors"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-3">
               {/* Profile Name with AI enhancer icon */}
@@ -138,9 +183,8 @@ export function ICPBuilder() {
                           : <Sparkles className="h-3.5 w-3.5" />
                         }
                       </button>
-                      {/* Tooltip */}
                       <span className="pointer-events-none absolute bottom-full right-0 mb-1.5 z-50 whitespace-nowrap rounded-md border border-ink/[0.08] bg-overlay px-2 py-1 font-mono text-[10px] text-mist opacity-0 shadow-lg transition-opacity duration-150 group-hover/tooltip:opacity-100">
-                        AI-fill all fields from profile name
+                        AI-fill fields from profile name (keeps existing)
                       </span>
                     </div>
                   </div>
@@ -149,6 +193,20 @@ export function ICPBuilder() {
                   <p className="mt-1 font-mono text-[10px] text-crimson">{enhanceError}</p>
                 )}
               </div>
+
+              {/* isActive toggle — edit mode only */}
+              {isEditing && (
+                <label className="flex items-center gap-2 font-mono text-[11px] text-mist cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={newIsActive}
+                    onChange={(e) => setNewIsActive(e.target.checked)}
+                    className="rounded"
+                  />
+                  Mark as active profile
+                </label>
+              )}
+
               <TagInput label="Target Roles" tags={newConfig.targetRoles ?? []}
                 onChange={(t: string[]) => setNewConfig({ ...newConfig, targetRoles: t })}
                 placeholder="CTO, VP Engineering, Head of Product" />
@@ -159,6 +217,7 @@ export function ICPBuilder() {
                 onChange={(t: string[]) => setNewConfig({ ...newConfig, targetLocations: t })}
                 placeholder="US, UK, Canada" />
             </div>
+
             <div className="space-y-3">
               <div>
                 <label className="section-label mb-1.5 block">Company Stages</label>
@@ -226,8 +285,6 @@ export function ICPBuilder() {
                 </div>
               ))}
             </div>
-
-            {/* Preview score */}
             <div className="mt-3 flex items-center gap-3 rounded-lg border border-aqua/15 bg-aqua/[0.03] p-3">
               <span className="font-mono text-[11px] text-mist">Preview max score:</span>
               <span className="num font-display text-xl font-700 text-aqua">
@@ -240,13 +297,18 @@ export function ICPBuilder() {
           </div>
 
           <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-ink/[0.06]">
-            <button onClick={() => setShowCreate(false)} className="rounded-lg border border-ink/[0.06] px-4 py-2 font-mono text-[11px] text-mist hover:text-ink">Cancel</button>
             <button
-              onClick={() => createMutation.mutate()}
-              disabled={!newName.trim() || createMutation.isPending}
+              onClick={handleCloseForm}
+              className="rounded-lg border border-ink/[0.06] px-4 py-2 font-mono text-[11px] text-mist hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => isEditing ? updateMutation.mutate() : createMutation.mutate()}
+              disabled={!newName.trim() || isSaving}
               className="rounded-lg bg-aqua/10 px-4 py-2 font-mono text-[11px] font-500 text-aqua ring-1 ring-aqua/20 disabled:opacity-50"
             >
-              {createMutation.isPending ? 'Saving…' : 'Save ICP Profile'}
+              {isSaving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save ICP Profile'}
             </button>
           </div>
         </Card>
@@ -257,7 +319,7 @@ export function ICPBuilder() {
         <div className="space-y-3">
           {[...Array(2)].map((_, i) => <div key={i} className="skeleton h-24 rounded-xl" />)}
         </div>
-      ) : profiles.length === 0 && !showCreate ? (
+      ) : profiles.length === 0 && !showForm ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Target className="h-10 w-10 text-mist" />
           <p className="text-[14px] font-500 text-mist">No ICP profiles yet</p>
@@ -271,6 +333,7 @@ export function ICPBuilder() {
               profile={profile}
               expanded={expandedId === profile.id}
               onToggle={() => setExpandedId(expandedId === profile.id ? null : profile.id)}
+              onEdit={() => handleStartEdit(profile)}
             />
           ))}
         </div>
@@ -279,14 +342,18 @@ export function ICPBuilder() {
   );
 }
 
+// ── ICPProfileCard ────────────────────────────────────────────────────────────
+
 function ICPProfileCard({
   profile,
   expanded,
   onToggle,
+  onEdit,
 }: {
   profile: ICPProfile;
   expanded: boolean;
   onToggle: () => void;
+  onEdit: () => void;
 }) {
   return (
     <div className={cn(
@@ -310,12 +377,23 @@ function ICPProfileCard({
             {(profile.config?.targetRoles?.length ?? 0) > 3 && ` +${(profile.config?.targetRoles?.length ?? 0) - 3} more`}
           </p>
         </div>
+
         {profile.conversionRate !== undefined && (
           <div className="text-right mr-2">
             <p className="num font-mono text-[14px] font-600 text-jade">{(profile.conversionRate * 100).toFixed(1)}%</p>
             <p className="font-mono text-[9px] text-mist">conv. rate</p>
           </div>
         )}
+
+        {/* Edit button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          className="flex items-center gap-1 rounded-md border border-ink/[0.06] px-2 py-1 font-mono text-[10px] text-dusk hover:text-mist hover:border-ink/20 transition-colors shrink-0"
+        >
+          <Pencil className="h-3 w-3" />
+          Edit
+        </button>
+
         {expanded ? <ChevronDown className="h-4 w-4 text-dusk shrink-0" /> : <ChevronRight className="h-4 w-4 text-dusk shrink-0" />}
       </div>
 
@@ -350,4 +428,3 @@ function ICPProfileCard({
     </div>
   );
 }
-

@@ -36,6 +36,28 @@ You MUST respond with ONLY a raw JSON object — no markdown, no code fences, no
   "hiringIntent": <boolean>
 }`;
 
+/**
+ * Compact system prompt used by provider.classifyIntent().
+ * The pipeline stage uses the richer INTENT_DETECTION_SYSTEM_PROMPT above.
+ */
+export const INTENT_CLASSIFICATION_SYSTEM_PROMPT = `You are an expert at detecting buyer intent from social media posts and messages.
+Analyze the content and return a JSON object with these exact fields:
+{
+  "intentType": "BUYING" | "HIRING" | "PARTNERSHIP" | "RESEARCH" | "COMPLAINING" | "COMPARING" | "EXPLORING" | "UNKNOWN",
+  "intentUrgency": "IMMEDIATE" | "HIGH" | "MEDIUM" | "LOW" | "NONE",
+  "intentConfidence": 0.0-1.0,
+  "isBuyer": true/false,
+  "intentReasoning": "brief explanation",
+  "painPoints": ["array", "of", "pain", "points"],
+  "fears": ["array", "of", "fears"],
+  "desires": ["array", "of", "desires"],
+  "budgetSignal": "budget mention or null",
+  "hiringIntent": true/false,
+  "companyStage": "startup|growth|enterprise|unknown",
+  "technicalLevel": "technical|non-technical|mixed|unknown"
+}
+Respond ONLY with valid JSON.`;
+
 export const buildIntentPrompt = (content: string, platform: string): string => {
   return `Platform: ${platform}
 

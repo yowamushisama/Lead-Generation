@@ -32,6 +32,15 @@ const performance = {
   metrics: { totalLeads: 5, messagesSent: 10, replyRate: 0.2, conversionRate: 0.1 },
 };
 
+const runSummary = {
+  campaignId: 'camp-1',
+  trigger: 'manual' as const,
+  adaptersAttempted: ['linkedin'],
+  adaptersUsed: ['linkedin'],
+  skippedAdapters: [],
+  enqueued: 3,
+};
+
 const mockCampaignsService = {
   create: jest.fn(),
   findAll: jest.fn(),
@@ -42,6 +51,7 @@ const mockCampaignsService = {
   pause: jest.fn(),
   resume: jest.fn(),
   archive: jest.fn(),
+  runManually: jest.fn(),
 };
 
 describe('CampaignsController', () => {
@@ -171,6 +181,37 @@ describe('CampaignsController', () => {
 
       expect((res.data as any).status).toBe('ARCHIVED');
       expect((res.data as any).isActive).toBe(false);
+    });
+  });
+
+  describe('runManually', () => {
+    it('returns run summary for an ACTIVE campaign', async () => {
+      mockCampaignsService.runManually.mockResolvedValue(runSummary);
+
+      const res = await controller.runManually(tenant as any, 'camp-1');
+
+      expect(res.success).toBe(true);
+      expect((res.data as any).enqueued).toBe(3);
+      expect((res.data as any).adaptersUsed).toEqual(['linkedin']);
+      expect((res.data as any).trigger).toBe('manual');
+      expect(mockCampaignsService.runManually).toHaveBeenCalledWith(tenant, 'camp-1');
+    });
+
+    it('propagates ForbiddenException when campaign is not ACTIVE', async () => {
+      mockCampaignsService.runManually.mockRejectedValue(
+        new ForbiddenException('Campaign must be ACTIVE to run manually'),
+      );
+
+      await expect(controller.runManually(tenant as any, 'camp-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('propagates ConflictException when a run is already in progress', async () => {
+      const { ConflictException } = await import('@nestjs/common');
+      mockCampaignsService.runManually.mockRejectedValue(
+        new ConflictException('Campaign camp-1 is already running'),
+      );
+
+      await expect(controller.runManually(tenant as any, 'camp-1')).rejects.toThrow(ConflictException);
     });
   });
 

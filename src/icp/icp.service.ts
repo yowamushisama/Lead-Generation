@@ -3,7 +3,7 @@ import { IcpProfileRepository } from '../database/repositories/icp-profile.repos
 import { LeadRepository } from '../database/repositories/lead.repository';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { ICPConfig, ICPMatch } from '../common/types/icp.types';
-import { OpenAIProvider } from '../ai/providers/openai.provider';
+import { AIProviderFactory } from '../ai/ai-provider.factory';
 import {
   ICP_ENHANCE_SYSTEM_PROMPT,
   VALID_ICP_STAGES,
@@ -30,7 +30,7 @@ export class ICPService {
   constructor(
     private readonly icpProfileRepository: IcpProfileRepository,
     private readonly leadRepository: LeadRepository,
-    private readonly openAiProvider: OpenAIProvider,
+    private readonly aiFactory: AIProviderFactory,
   ) {}
 
   async create(tenant: TenantContext, dto: CreateICPDto) {
@@ -164,9 +164,10 @@ export class ICPService {
     const prompt = buildICPEnhancePrompt(profileName);
     let lastError: unknown;
 
+    const provider = this.aiFactory.getProvider();
+
     for (let attempt = 0; attempt <= ICPService.MAX_ENHANCE_RETRIES; attempt++) {
-      const result = await this.openAiProvider.complete(prompt, {
-        model: 'gpt-4o-mini',
+      const result = await provider.complete(prompt, {
         systemPrompt: ICP_ENHANCE_SYSTEM_PROMPT,
         temperature: 0.4,
         maxTokens: 800,

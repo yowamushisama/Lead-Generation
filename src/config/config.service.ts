@@ -78,12 +78,31 @@ export class AppConfigService {
     return this.configService.get<string>('JWT_EXPIRES_IN') ?? '7d';
   }
 
-  get openAiApiKey(): string {
-    return this.getRequired('OPENAI_API_KEY');
+  get openAiApiKey(): string | undefined {
+    return this.configService.get<string>('OPENAI_API_KEY');
   }
 
   get anthropicApiKey(): string | undefined {
     return this.configService.get<string>('ANTHROPIC_API_KEY');
+  }
+
+  get groqApiKey(): string | undefined {
+    return this.configService.get<string>('GROQ_API_KEY');
+  }
+
+  /** Which provider to use: groq | openai | anthropic */
+  get aiProvider(): string {
+    return this.configService.get<string>('AI_PROVIDER') ?? 'groq';
+  }
+
+  /** Model for fast classification tasks (intent detection, scoring) */
+  get groqClassificationModel(): string {
+    return this.configService.get<string>('GROQ_CLASSIFICATION_MODEL') ?? 'llama-3.1-8b-instant';
+  }
+
+  /** Model for high-quality generation tasks (outreach, personalization) */
+  get groqPersonalizationModel(): string {
+    return this.configService.get<string>('GROQ_PERSONALIZATION_MODEL') ?? 'llama-3.3-70b-versatile';
   }
 
   get dataRetentionDays(): number {

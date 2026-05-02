@@ -8,17 +8,23 @@ import {
 import { TenantContext } from '../../common/interfaces/tenant-context.interface';
 import { IntentResult } from '../../common/types/intent.types';
 import { AppConfigService } from '../../config/config.service';
+import { INTENT_CLASSIFICATION_SYSTEM_PROMPT } from '../prompts/intent-detection.prompt';
 
 @Injectable()
 export class ClaudeProvider implements IAIProvider {
   readonly providerName = 'anthropic';
   private readonly logger = new Logger(ClaudeProvider.name);
-  private readonly client: Anthropic;
+  private _client: Anthropic | undefined;
 
-  constructor(private readonly config: AppConfigService) {
-    const apiKey = this.config.anthropicApiKey;
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required for ClaudeProvider');
-    this.client = new Anthropic({ apiKey });
+  constructor(private readonly config: AppConfigService) {}
+
+  private get client(): Anthropic {
+    if (!this._client) {
+      const apiKey = this.config.anthropicApiKey;
+      if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required — set it or switch AI_PROVIDER');
+      this._client = new Anthropic({ apiKey });
+    }
+    return this._client;
   }
 
   async complete(prompt: string, options: AICompletionOptions = {}): Promise<AICompletionResult> {
@@ -42,27 +48,9 @@ export class ClaudeProvider implements IAIProvider {
   }
 
   async classifyIntent(content: string, context: TenantContext): Promise<IntentResult> {
-    const systemPrompt = `You are an expert at detecting buyer intent from social media posts and messages.
-Analyze the content and return a JSON object with these exact fields:
-{
-  "intentType": "BUYING" | "HIRING" | "PARTNERSHIP" | "RESEARCH" | "COMPLAINING" | "COMPARING" | "EXPLORING" | "UNKNOWN",
-  "intentUrgency": "IMMEDIATE" | "HIGH" | "MEDIUM" | "LOW" | "NONE",
-  "intentConfidence": 0.0-1.0,
-  "isBuyer": true/false,
-  "intentReasoning": "brief explanation",
-  "painPoints": ["array"],
-  "fears": ["array"],
-  "desires": ["array"],
-  "budgetSignal": "mention or null",
-  "hiringIntent": true/false,
-  "companyStage": "startup|growth|enterprise|unknown",
-  "technicalLevel": "technical|non-technical|mixed|unknown"
-}
-Respond ONLY with valid JSON.`;
-
     const result = await this.complete(content, {
       model: 'claude-haiku-4-5-20251001',
-      systemPrompt,
+      systemPrompt: INTENT_CLASSIFICATION_SYSTEM_PROMPT,
       temperature: 0.1,
       maxTokens: 512,
     });

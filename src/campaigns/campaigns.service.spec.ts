@@ -41,8 +41,18 @@ const mockIcpProfileRepository = {
 
 const mockPrismaService = {};
 
+const mockRunSummary = {
+  campaignId: 'camp-1',
+  trigger: 'manual' as const,
+  adaptersAttempted: ['linkedin'],
+  adaptersUsed: ['linkedin'],
+  skippedAdapters: [],
+  enqueued: 3,
+};
+
 const mockCampaignRunnerService = {
   runOnActivationIfEnabled: jest.fn(),
+  runCampaign: jest.fn(),
 };
 
 const tenant = { organizationId: 'org-1', userId: 'user-1', role: 'admin' };
@@ -298,6 +308,37 @@ describe('CampaignsService', () => {
       await expect(
         service.update(tenant as any, 'camp-1', { name: 'New Name' }),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ── runManually ────────────────────────────────────────────────────────────
+
+  describe('runManually', () => {
+    it('delegates to runner with trigger=manual for an ACTIVE campaign', async () => {
+      setupFindOneSuccess();
+      mockCampaignRunnerService.runCampaign.mockResolvedValue(mockRunSummary);
+
+      const result = await service.runManually(tenant as any, 'camp-1');
+
+      expect(result.trigger).toBe('manual');
+      expect(result.enqueued).toBe(3);
+      expect(mockCampaignRunnerService.runCampaign).toHaveBeenCalledWith(tenant, 'camp-1', 'manual');
+    });
+
+    it('throws ForbiddenException when campaign is PAUSED', async () => {
+      const paused = { ...campaignRow, status: 'PAUSED', isActive: false, _count: { leads: 0, messages: 0 } };
+      mockCampaignRepository.findFirst.mockResolvedValueOnce(paused);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
+
+      await expect(service.runManually(tenant as any, 'camp-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws ForbiddenException when campaign is DRAFT', async () => {
+      const draft = { ...campaignRow, status: 'DRAFT', isActive: false, _count: { leads: 0, messages: 0 } };
+      mockCampaignRepository.findFirst.mockResolvedValueOnce(draft);
+      mockLeadRepository.countByCampaignAndStatus.mockResolvedValue([]);
+
+      await expect(service.runManually(tenant as any, 'camp-1')).rejects.toThrow(ForbiddenException);
     });
   });
 

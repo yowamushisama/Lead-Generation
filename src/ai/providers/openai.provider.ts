@@ -8,6 +8,7 @@ import {
 import { TenantContext } from '../../common/interfaces/tenant-context.interface';
 import { IntentResult } from '../../common/types/intent.types';
 import { AppConfigService } from '../../config/config.service';
+import { INTENT_CLASSIFICATION_SYSTEM_PROMPT } from '../prompts/intent-detection.prompt';
 
 @Injectable()
 export class OpenAIProvider implements IAIProvider {
@@ -16,7 +17,7 @@ export class OpenAIProvider implements IAIProvider {
   private readonly client: OpenAI;
 
   constructor(private readonly config: AppConfigService) {
-    this.client = new OpenAI({ apiKey: this.config.openAiApiKey });
+    this.client = new OpenAI({ apiKey: this.config.openAiApiKey ?? '' });
   }
 
   async complete(prompt: string, options: AICompletionOptions = {}): Promise<AICompletionResult> {
@@ -45,27 +46,9 @@ export class OpenAIProvider implements IAIProvider {
   }
 
   async classifyIntent(content: string, context: TenantContext): Promise<IntentResult> {
-    const systemPrompt = `You are an expert at detecting buyer intent from social media posts and messages.
-Analyze the content and return a JSON object with these exact fields:
-{
-  "intentType": "BUYING" | "HIRING" | "PARTNERSHIP" | "RESEARCH" | "COMPLAINING" | "COMPARING" | "EXPLORING" | "UNKNOWN",
-  "intentUrgency": "IMMEDIATE" | "HIGH" | "MEDIUM" | "LOW" | "NONE",
-  "intentConfidence": 0.0-1.0,
-  "isBuyer": true/false,
-  "intentReasoning": "brief explanation",
-  "painPoints": ["array", "of", "pain", "points"],
-  "fears": ["array", "of", "fears"],
-  "desires": ["array", "of", "desires"],
-  "budgetSignal": "budget mention or null",
-  "hiringIntent": true/false,
-  "companyStage": "startup|growth|enterprise|unknown",
-  "technicalLevel": "technical|non-technical|mixed|unknown"
-}
-Respond ONLY with valid JSON.`;
-
     const result = await this.complete(content, {
       model: 'gpt-4o-mini',
-      systemPrompt,
+      systemPrompt: INTENT_CLASSIFICATION_SYSTEM_PROMPT,
       temperature: 0.1,
       maxTokens: 512,
     });
