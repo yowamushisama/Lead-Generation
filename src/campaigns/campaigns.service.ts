@@ -10,7 +10,7 @@ import { ICPConfig } from '../common/types/icp.types';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { CampaignFilterDto } from './dto/campaign-filter.dto';
 import { sanitizePromptConfigOverrides } from '../prompt-config/prompt-config-overrides.util';
-import { CampaignRunnerService } from './campaign-runner.service';
+import { CampaignRunnerService, CampaignRunSummary } from './campaign-runner.service';
 
 export interface CampaignWithMetrics {
   id: string;
@@ -235,6 +235,16 @@ export class CampaignsService {
     });
     await this.campaignRunner.runOnActivationIfEnabled(tenant, id);
     return this.findOne(tenant, id);
+  }
+
+  async runManually(tenant: TenantContext, id: string): Promise<CampaignRunSummary> {
+    const campaign = await this.findOne(tenant, id);
+    if (campaign.status !== 'ACTIVE' || !campaign.isActive) {
+      throw new ForbiddenException(
+        `Cannot run pipeline for campaign with status ${campaign.status}. Campaign must be ACTIVE.`,
+      );
+    }
+    return this.campaignRunner.runCampaign(tenant, id, 'manual');
   }
 
   async archive(tenant: TenantContext, id: string): Promise<CampaignWithMetrics> {

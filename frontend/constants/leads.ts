@@ -1,4 +1,17 @@
-import type { LeadStatus } from '@/models';
+import type { LeadStatus, LeadTier } from '@/models';
+
+export const ALL_STATUSES: LeadStatus[] = [
+  'NEW', 'ENRICHED', 'SCORED', 'PERSONALIZED', 'MESSAGE_DRAFTED',
+  'MESSAGE_APPROVED', 'OUTREACH_SENT', 'REPLIED', 'MEETING_BOOKED',
+  'CONVERTED', 'DISQUALIFIED', 'OPT_OUT',
+];
+
+export const TIER_OPTIONS: { value: LeadTier | 'all'; label: string }[] = [
+  { value: 'all', label: 'All Tiers' },
+  { value: 'HOT',  label: 'HOT' },
+  { value: 'WARM', label: 'WARM' },
+  { value: 'COLD', label: 'COLD' },
+];
 
 export const KANBAN_COLUMNS: { id: LeadStatus; label: string }[] = [
   { id: 'NEW', label: 'New' },

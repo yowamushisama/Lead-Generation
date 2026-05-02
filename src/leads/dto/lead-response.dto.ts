@@ -52,6 +52,33 @@ export class LeadDetailResponseDto {
   @ApiPropertyOptional() optedOutAt!: Date | null;
   @ApiPropertyOptional() dataExpiresAt!: Date | null;
   @ApiPropertyOptional({ format: 'uuid' }) campaignId!: string | null;
+
+  // Google Maps enrichment
+  @ApiPropertyOptional() placeId!: string | null;
+  @ApiPropertyOptional() rating!: number | null;
+  @ApiPropertyOptional() reviewCount!: number | null;
+  @ApiPropertyOptional() businessType!: string | null;
+  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' } })
+  businessHours!: Record<string, string> | null;
+  @ApiPropertyOptional() lastReviewAt!: Date | null;
+  @ApiPropertyOptional({ type: [String] }) googleTypes!: string[] | null;
+  @ApiPropertyOptional({ type: 'object' })
+  socialHandles!: { instagram?: string; facebook?: string; tiktok?: string } | null;
+
+  // Website enrichment
+  @ApiPropertyOptional({ type: 'object' })
+  websiteAudit!: {
+    title: string | null;
+    metaDescription: string | null;
+    h1Count: number;
+    hasViewport: boolean;
+    ctaPresent: boolean;
+    techStack: string[];
+    loadMs: number;
+  } | null;
+  @ApiPropertyOptional({ enum: ['OK', 'NO_WEBSITE', 'UNREACHABLE', 'TIMEOUT'] })
+  enrichmentStatus!: string | null;
+
   @ApiProperty({ type: () => [LeadMessageSummaryDto], description: 'Up to 5 most recent messages' })
   messages!: LeadMessageSummaryDto[];
   @ApiProperty({ type: () => [LeadConversationSummaryDto], description: 'Up to 3 most recent conversations' })

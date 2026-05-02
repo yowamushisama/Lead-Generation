@@ -60,6 +60,7 @@ export const API_URLS = {
     pause:       (id: string) => `${V1}/campaigns/${id}/pause`,
     resume:      (id: string) => `${V1}/campaigns/${id}/resume`,
     archive:     (id: string) => `${V1}/campaigns/${id}/archive`,
+    run:         (id: string) => `${V1}/campaigns/${id}/run`,
   },
 
   // ── ICP ─────────────────────────────────────────────────────────────────────

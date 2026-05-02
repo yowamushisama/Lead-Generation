@@ -63,6 +63,16 @@ export interface CampaignPerformance {
   metrics: CampaignPerformanceMetrics;
 }
 
+/** Shape returned by POST /api/v1/campaigns/:id/run */
+export interface CampaignRunSummary {
+  campaignId: string;
+  trigger: 'activation' | 'scheduled' | 'manual';
+  adaptersAttempted: string[];
+  adaptersUsed: string[];
+  skippedAdapters: Array<{ adapter: string; reason: string }>;
+  enqueued: number;
+}
+
 export interface CreateCampaignDto {
   name: string;
   description?: string;

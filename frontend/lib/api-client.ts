@@ -27,6 +27,7 @@ import type {
   ApiResponse,
   Campaign,
   CampaignPerformance,
+  CampaignRunSummary,
   CreateCampaignDto,
   UpdateCampaignDto,
   ICPProfile,
@@ -155,6 +156,9 @@ export const campaigns = {
 
   archive: (id: string) =>
     patch<ApiResponse<Campaign>>(API_URLS.campaigns.archive(id)).then(unwrap),
+
+  run: (id: string) =>
+    post<ApiResponse<CampaignRunSummary>>(API_URLS.campaigns.run(id)).then(unwrap),
 };
 
 // ── ICP ───────────────────────────────────────────────────────────────────────

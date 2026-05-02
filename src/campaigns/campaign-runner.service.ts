@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ConflictException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { AdapterRegistryService } from '../adapters/adapter-registry.service';
 import { AppConfigService } from '../config/config.service';
@@ -6,10 +7,11 @@ import { LeadSource } from '../common/enums/lead-source.enum';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { CampaignRepository } from '../database/repositories/campaign.repository';
 import { OrchestratorService } from '../pipeline/orchestrator.service';
+import { RedisService } from '../database/redis.service';
 
-type CampaignRunTrigger = 'activation' | 'scheduled';
+export type CampaignRunTrigger = 'activation' | 'scheduled' | 'manual';
 
-interface CampaignRunSummary {
+export interface CampaignRunSummary {
   campaignId: string;
   trigger: CampaignRunTrigger;
   adaptersAttempted: string[];
@@ -26,12 +28,15 @@ export class CampaignRunnerService {
     LeadSource.WEBHOOK,
   ]);
 
+  private static readonly RUN_LOCK_TTL_SECONDS = 600;
+
   constructor(
     private readonly campaignRepository: CampaignRepository,
     private readonly adapterRegistry: AdapterRegistryService,
     private readonly orchestrator: OrchestratorService,
     private readonly configService: ConfigService,
     private readonly appConfig: AppConfigService,
+    private readonly redis: RedisService,
   ) {}
 
   async runOnActivationIfEnabled(tenant: TenantContext, campaignId: string): Promise<void> {
@@ -56,6 +61,25 @@ export class CampaignRunnerService {
   }
 
   async runCampaign(
+    tenant: TenantContext,
+    campaignId: string,
+    trigger: CampaignRunTrigger,
+  ): Promise<CampaignRunSummary> {
+    const lockKey = `campaign:run:lock:${campaignId}`;
+    const lockToken = randomUUID();
+    const acquired = await this.redis.setnx(lockKey, lockToken, CampaignRunnerService.RUN_LOCK_TTL_SECONDS);
+    if (!acquired) {
+      throw new ConflictException(`Campaign ${campaignId} is already running. Try again once the current run finishes.`);
+    }
+
+    try {
+      return await this.runCampaignLocked(tenant, campaignId, trigger);
+    } finally {
+      await this.redis.delIfOwner(lockKey, lockToken).catch(() => undefined);
+    }
+  }
+
+  private async runCampaignLocked(
     tenant: TenantContext,
     campaignId: string,
     trigger: CampaignRunTrigger,
@@ -160,6 +184,17 @@ export class CampaignRunnerService {
         continue;
       }
 
+      if (adapter.sourceType === 'discovery' && (locations.length === 0 || industries.length === 0)) {
+        summary.skippedAdapters.push({ adapter: adapter.name, reason: 'missing_locations_or_industries' });
+        this.logger.warn({
+          message: 'Skipping discovery adapter for campaign without locations or industries',
+          campaignId,
+          organizationId: tenant.organizationId,
+          adapter: adapter.name,
+        });
+        continue;
+      }
+
       summary.adaptersUsed.push(adapter.name);
 
       const config = {
@@ -212,19 +247,22 @@ export class CampaignRunnerService {
   }
 
   private resolveRequestedSources(targetSources: string[]): string[] {
-    const override = this.readCsvEnv('CAMPAIGN_RUN_SOURCES');
-    if (override.length > 0) {
-      return override;
-    }
+    // Campaign-level targetSources always takes priority over the global env override.
+    // CAMPAIGN_RUN_SOURCES is only a fallback used when no campaign sources are configured,
+    // e.g. for debugging a specific adapter system-wide.
+    const sources =
+      targetSources.length > 0
+        ? targetSources
+        : (() => {
+            const override = this.readCsvEnv('CAMPAIGN_RUN_SOURCES');
+            if (override.length > 0) return override;
+            return this.adapterRegistry
+              .getAll()
+              .map((adapter) => adapter.name)
+              .filter((name) => !this.autonomousUnsupportedSources.has(name));
+          })();
 
-    if (targetSources.length > 0) {
-      return targetSources;
-    }
-
-    return this.adapterRegistry
-      .getAll()
-      .map((adapter) => adapter.name)
-      .filter((name) => !this.autonomousUnsupportedSources.has(name));
+    return sources;
   }
 
   private readCsvEnv(key: string): string[] {

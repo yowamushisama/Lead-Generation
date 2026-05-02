@@ -21,6 +21,7 @@ import { CampaignsService } from './campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { CampaignFilterDto } from './dto/campaign-filter.dto';
 import { CampaignResponseDto, CampaignPerformanceResponseDto } from './dto/campaign-response.dto';
+import { CampaignRunSummaryDto } from './dto/campaign-run-summary.dto';
 import { JwtAuthGuard } from '../common/guards/auth.guard';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { Tenant } from '../common/decorators/tenant.decorator';
@@ -139,6 +140,25 @@ export class CampaignsController {
   ): Promise<ApiResponseDto<CampaignResponseDto>> {
     const data = await this.campaignsService.launch(tenant, id);
     return ApiResponseDto.success(data as CampaignResponseDto, 'Campaign launched');
+  }
+
+  @Post(':id/run')
+  @ApiOperation({
+    summary: 'Manually trigger the collection pipeline',
+    description:
+      'Runs every configured adapter for an ACTIVE campaign on demand and enqueues the discovered leads to the intent stage. Returns a summary of adapters used, skipped reasons, and number of leads enqueued.',
+  })
+  @ApiParam({ name: 'id', description: 'Campaign UUID' })
+  @ApiResponse({ status: 200, description: 'Run completed (leads enqueued).', type: ApiResponseDto<CampaignRunSummaryDto> })
+  @ApiResponse({ status: 403, description: 'Campaign is not ACTIVE.' })
+  @ApiResponse({ status: 404, description: 'Campaign not found.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT.' })
+  async runManually(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiResponseDto<CampaignRunSummaryDto>> {
+    const summary = await this.campaignsService.runManually(tenant, id);
+    return ApiResponseDto.success(summary as CampaignRunSummaryDto, 'Campaign run started');
   }
 
   @Patch(':id/resume')

@@ -79,6 +79,23 @@ export interface Lead {
   rating?: number | null;
   reviewCount?: number | null;
   businessType?: string | null;
+  placeId?: string | null;
+  googleTypes?: string[] | null;
+  businessHours?: Record<string, string> | null;
+  lastReviewAt?: string | null;
+  socialHandles?: { instagram?: string; facebook?: string; tiktok?: string } | null;
+
+  // Website enrichment
+  websiteAudit?: {
+    title: string | null;
+    metaDescription: string | null;
+    h1Count: number;
+    hasViewport: boolean;
+    ctaPresent: boolean;
+    techStack: string[];
+    loadMs: number;
+  } | null;
+  enrichmentStatus?: string | null;
 
   // Personalization
   toneProfile?: string | null;

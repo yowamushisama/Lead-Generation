@@ -34,3 +34,14 @@ export function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen - 1) + '…';
 }
+
+export function csvFilename(prefix: string): string {
+  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  return `${prefix}_${date}.csv`;
+}
+
+/** Merges two string arrays — preserves existing items, appends new ones (case-insensitive dedup). */
+export function mergeUnique(existing: string[], incoming: string[] = []): string[] {
+  const seen = new Set(existing.map((s) => s.toLowerCase()));
+  return [...existing, ...incoming.filter((s) => !seen.has(s.toLowerCase()))];
+}
