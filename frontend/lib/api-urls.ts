@@ -30,13 +30,16 @@ export const API_URLS = {
 
   // ── Leads ───────────────────────────────────────────────────────────────────
   leads: {
-    list:       (params?: Record<string, string | number | boolean | undefined | null>) => `${V1}/leads${qs(params)}`,
-    get:        (id: string) => `${V1}/leads/${id}`,
-    stats:      `${V1}/leads/stats`,
-    update:     (id: string) => `${V1}/leads/${id}`,
-    delete:     (id: string) => `${V1}/leads/${id}`,
-    optOut:     (id: string) => `${V1}/leads/${id}/opt-out`,
-    bulk:       `${V1}/leads/bulk`,
+    list:           (params?: Record<string, string | number | boolean | undefined | null>) => `${V1}/leads${qs(params)}`,
+    get:            (id: string) => `${V1}/leads/${id}`,
+    stats:          `${V1}/leads/stats`,
+    update:         (id: string) => `${V1}/leads/${id}`,
+    delete:         (id: string) => `${V1}/leads/${id}`,
+    optOut:         (id: string) => `${V1}/leads/${id}/opt-out`,
+    bulk:           `${V1}/leads/bulk`,
+    reports:           (id: string) => `${V1}/leads/${id}/reports`,
+    regenerateReport:  (id: string) => `${V1}/leads/${id}/reports/regenerate`,
+    coldCallScript:    (id: string) => `${V1}/leads/${id}/cold-call-script`,
   },
 
   // ── Messages ────────────────────────────────────────────────────────────────

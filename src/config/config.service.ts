@@ -105,6 +105,32 @@ export class AppConfigService {
     return this.configService.get<string>('GROQ_PERSONALIZATION_MODEL') ?? 'llama-3.3-70b-versatile';
   }
 
+  /** Toggle for AI deep website report generation (markdown + structured JSON) */
+  get enableDeepReport(): boolean {
+    return this.configService.get<string>('ENABLE_DEEP_REPORT') === 'true';
+  }
+
+  get deepReportModel(): string {
+    return this.configService.get<string>('DEEP_REPORT_MODEL') ?? 'llama-3.3-70b-versatile';
+  }
+
+  get deepReportMaxTokens(): number {
+    return parseInt(this.configService.get<string>('DEEP_REPORT_MAX_TOKENS') ?? '4000', 10);
+  }
+
+  /** Toggle for AI cold-call script generation */
+  get enableColdCallScript(): boolean {
+    return this.configService.get<string>('ENABLE_COLD_CALL_SCRIPT') === 'true';
+  }
+
+  get coldCallModel(): string {
+    return this.configService.get<string>('COLD_CALL_MODEL') ?? 'llama-3.3-70b-versatile';
+  }
+
+  get coldCallMaxTokens(): number {
+    return parseInt(this.configService.get<string>('COLD_CALL_MAX_TOKENS') ?? '2000', 10);
+  }
+
   get dataRetentionDays(): number {
     return parseInt(this.configService.get<string>('DATA_RETENTION_DAYS') ?? '90', 10);
   }

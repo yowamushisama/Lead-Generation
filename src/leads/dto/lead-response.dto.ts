@@ -75,9 +75,24 @@ export class LeadDetailResponseDto {
     ctaPresent: boolean;
     techStack: string[];
     loadMs: number;
+    deepSignals?: Record<string, unknown>;
   } | null;
   @ApiPropertyOptional({ enum: ['OK', 'NO_WEBSITE', 'UNREACHABLE', 'TIMEOUT'] })
   enrichmentStatus!: string | null;
+
+  // Psychographic & scoring (detail-only fields)
+  @ApiPropertyOptional({ type: 'object' })
+  scoreBreakdown!: Record<string, unknown> | null;
+  @ApiPropertyOptional({ type: [String] })
+  painPoints!: string[] | null;
+  @ApiPropertyOptional({ type: [String] })
+  fears!: string[] | null;
+  @ApiPropertyOptional({ type: [String] })
+  desires!: string[] | null;
+  @ApiPropertyOptional()
+  intentReasoning!: string | null;
+  @ApiPropertyOptional()
+  toneProfile!: string | null;
 
   @ApiProperty({ type: () => [LeadMessageSummaryDto], description: 'Up to 5 most recent messages' })
   messages!: LeadMessageSummaryDto[];

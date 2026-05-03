@@ -18,6 +18,7 @@ import type {
   LeadStatus,
   LeadStats,
   Message,
+  ReportArtifactSummary,
   DashboardData,
   SourceBreakdown,
   TrendRow,
@@ -108,6 +109,24 @@ export const leads = {
 
   optOut: (id: string) =>
     post<ApiResponse<Lead>>(API_URLS.leads.optOut(id)).then(unwrap),
+
+  reports: (id: string) =>
+    get<
+      ApiResponse<{
+        latest: ReportArtifactSummary | null;
+        versionCount: number;
+        versions: { id: string; version: number; generatedAt: string }[];
+      }>
+    >(API_URLS.leads.reports(id)).then(unwrap),
+
+  regenerateReport: (id: string) =>
+    post<ApiResponse<{ artifactId: string; version: number; topPainPointTitle: string | null } | null>>(
+      API_URLS.leads.regenerateReport(id),
+      {},
+    ).then(unwrap),
+
+  coldCallScript: (id: string) =>
+    get<ApiResponse<Message | null>>(API_URLS.leads.coldCallScript(id)).then(unwrap),
 };
 
 // ── Messages ──────────────────────────────────────────────────────────────────

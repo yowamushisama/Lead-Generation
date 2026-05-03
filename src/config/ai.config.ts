@@ -13,6 +13,16 @@ export interface AiConfig {
   temperature: number;
   timeoutMs: number;
   retryAttempts: number;
+
+  /** Deep website analysis (markdown + structured JSON) */
+  enableDeepReport: boolean;
+  deepReportModel: string;
+  deepReportMaxTokens: number;
+
+  /** Cold-call script generator */
+  enableColdCallScript: boolean;
+  coldCallModel: string;
+  coldCallMaxTokens: number;
 }
 
 export default registerAs(
@@ -29,5 +39,13 @@ export default registerAs(
     temperature: parseFloat(process.env['AI_TEMPERATURE'] ?? '0.7'),
     timeoutMs: parseInt(process.env['AI_TIMEOUT_MS'] ?? '30000', 10),
     retryAttempts: 3,
+
+    enableDeepReport: process.env['ENABLE_DEEP_REPORT'] === 'true',
+    deepReportModel: process.env['DEEP_REPORT_MODEL'] ?? 'llama-3.3-70b-versatile',
+    deepReportMaxTokens: parseInt(process.env['DEEP_REPORT_MAX_TOKENS'] ?? '4000', 10),
+
+    enableColdCallScript: process.env['ENABLE_COLD_CALL_SCRIPT'] === 'true',
+    coldCallModel: process.env['COLD_CALL_MODEL'] ?? 'llama-3.3-70b-versatile',
+    coldCallMaxTokens: parseInt(process.env['COLD_CALL_MAX_TOKENS'] ?? '2000', 10),
   }),
 );

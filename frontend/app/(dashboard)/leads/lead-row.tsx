@@ -1,6 +1,7 @@
 'use client';
 
-import { ChevronDown, ChevronRight, ExternalLink, Star } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronRight, ExternalLink, Star } from 'lucide-react';
 import type { Lead, LeadStatus } from '@/models';
 import { type ColDef, type ColId } from '@/constants/lead-columns';
 import { ALL_STATUSES } from '@/constants/leads';
@@ -8,47 +9,38 @@ import { TierBadge, SourceBadge } from '@/components/ui/badge';
 import { ScoreBar } from '@/components/ui/score-bar';
 import { cn, relativeTime } from '@/lib/utils';
 import { EnrichmentBadge, fmtCount } from './lead-table-primitives';
-import { LeadExpandedRow } from './lead-expanded-row';
 
 export function LeadRowGroup({
-  lead, selected, expanded, activeCols, totalColCount, onSelect, onExpand, onStatusChange,
+  lead, selected, activeCols, onSelect, onStatusChange,
 }: {
   lead: Lead;
   selected: boolean;
-  expanded: boolean;
   activeCols: ColDef[];
-  totalColCount: number;
   onSelect: () => void;
-  onExpand: () => void;
   onStatusChange: (s: LeadStatus) => void;
 }) {
   return (
-    <>
-      <LeadRow
-        lead={lead}
-        selected={selected}
-        expanded={expanded}
-        activeCols={activeCols}
-        onSelect={onSelect}
-        onExpand={onExpand}
-        onStatusChange={onStatusChange}
-      />
-      {expanded && <LeadExpandedRow lead={lead} colSpan={totalColCount} />}
-    </>
+    <LeadRow
+      lead={lead}
+      selected={selected}
+      activeCols={activeCols}
+      onSelect={onSelect}
+      onStatusChange={onStatusChange}
+    />
   );
 }
 
 function LeadRow({
-  lead, selected, expanded, activeCols, onSelect, onExpand, onStatusChange,
+  lead, selected, activeCols, onSelect, onStatusChange,
 }: {
   lead: Lead;
   selected: boolean;
-  expanded: boolean;
   activeCols: ColDef[];
   onSelect: () => void;
-  onExpand: () => void;
   onStatusChange: (s: LeadStatus) => void;
 }) {
+  const router = useRouter();
+
   const tierBorderClass =
     lead.tier === 'HOT'  ? 'row-hot'  :
     lead.tier === 'WARM' ? 'row-warm' :
@@ -57,33 +49,31 @@ function LeadRow({
   return (
     <tr
       className={cn(
-        'group border-b border-ink/[0.04] transition-colors hover:bg-ink/[0.03]',
+        'group border-b border-ink/[0.04] transition-colors hover:bg-ink/[0.03] cursor-pointer',
         selected && 'bg-aqua/[0.03]',
         tierBorderClass,
       )}
+      onClick={() => router.push(`/leads/${lead.id}`)}
     >
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
           checked={selected}
           onChange={onSelect}
           className="rounded border-ink/20 bg-surface"
-          onClick={(e) => e.stopPropagation()}
         />
       </td>
 
       <td className="px-3 py-2.5">
-        <button className="flex w-full items-center gap-1.5 text-left" onClick={onExpand}>
-          {expanded
-            ? <ChevronDown className="h-3 w-3 shrink-0 text-aqua" />
-            : <ChevronRight className="h-3 w-3 shrink-0 text-dusk group-hover:text-mist" />}
+        <div className="flex items-center gap-1.5">
+          <ChevronRight className="h-3 w-3 shrink-0 text-dusk group-hover:text-aqua transition-colors" />
           <div className="min-w-0">
             <p className="truncate text-[12px] font-500 text-ink">{lead.company ?? lead.name ?? '—'}</p>
             {lead.name && lead.company && (
               <p className="truncate font-mono text-[10px] text-mist">{lead.name}</p>
             )}
           </div>
-        </button>
+        </div>
       </td>
 
       <td className="px-3 py-2.5">
@@ -94,11 +84,10 @@ function LeadRow({
         {lead.tier ? <TierBadge tier={lead.tier} /> : <span className="text-dusk">—</span>}
       </td>
 
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
         <select
           value={lead.status}
           onChange={(e) => onStatusChange(e.target.value as LeadStatus)}
-          onClick={(e) => e.stopPropagation()}
           className="rounded border-0 bg-transparent font-mono text-[10px] text-mist focus:outline-none focus:ring-0 cursor-pointer"
         >
           {ALL_STATUSES.map((s) => (
@@ -108,7 +97,7 @@ function LeadRow({
       </td>
 
       {activeCols.map((col) => (
-        <td key={col.id} className="px-3 py-2.5">
+        <td key={col.id} className="px-3 py-2.5" onClick={col.id === 'website' ? (e) => e.stopPropagation() : undefined}>
           <OptionalCell lead={lead} colId={col.id} />
         </td>
       ))}
@@ -153,7 +142,6 @@ function OptionalCell({ lead, colId }: { lead: Lead; colId: ColId }) {
             href={lead.website}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
             className="flex items-center gap-1 font-mono text-[10px] text-aqua hover:underline truncate"
           >
             <span className="truncate">{lead.website.replace(/^https?:\/\//, '')}</span>
@@ -191,15 +179,15 @@ function OptionalCell({ lead, colId }: { lead: Lead; colId: ColId }) {
       return (
         <div className="flex items-center gap-1.5">
           {s.instagram && (
-            <a href={s.instagram} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            <a href={s.instagram} target="_blank" rel="noopener noreferrer"
               className="font-mono text-[9px] uppercase tracking-wider text-orchid border border-orchid/30 rounded px-1 py-0.5 hover:bg-orchid/10">IG</a>
           )}
           {s.facebook && (
-            <a href={s.facebook} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            <a href={s.facebook} target="_blank" rel="noopener noreferrer"
               className="font-mono text-[9px] uppercase tracking-wider text-aqua border border-aqua/30 rounded px-1 py-0.5 hover:bg-aqua/10">FB</a>
           )}
           {s.tiktok && (
-            <a href={s.tiktok} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            <a href={s.tiktok} target="_blank" rel="noopener noreferrer"
               className="font-mono text-[9px] uppercase tracking-wider text-mist border border-ink/20 rounded px-1 py-0.5 hover:bg-ink/10">TT</a>
           )}
         </div>

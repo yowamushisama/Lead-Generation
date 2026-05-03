@@ -5,6 +5,7 @@ import type { Lead } from '@/models';
 import { ScoreBreakdown } from '@/components/ui/score-bar';
 import { cn, relativeTime } from '@/lib/utils';
 import { EnrichmentBadge, Field, YesNo, fmtCount } from './lead-table-primitives';
+import { LeadReportSections } from './lead-report-sections';
 
 export function LeadExpandedRow({ lead, colSpan }: { lead: Lead; colSpan: number }) {
   const hasGmaps = lead.rating != null || lead.reviewCount != null || lead.businessType ||
@@ -61,6 +62,8 @@ export function LeadExpandedRow({ lead, colSpan }: { lead: Lead; colSpan: number
             {lead.toneProfile        && <Field label="Tone Profile" value={<span className="text-aqua">{lead.toneProfile}</span>} />}
             {lead.recommendedChannel && <Field label="Channel"      value={lead.recommendedChannel} />}
           </div>
+
+          <LeadReportSections leadId={lead.id} />
 
           {(hasGmaps || hasWebsite) && (
             <div className="rounded-lg border border-ink/[0.06] bg-surface p-3 space-y-3">

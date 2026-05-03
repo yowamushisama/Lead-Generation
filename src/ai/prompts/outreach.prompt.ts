@@ -22,6 +22,25 @@ export interface CampaignOutreachContext {
   complianceNotes?: string;
 }
 
+/**
+ * Structured insight payload sourced from the latest WEBSITE_REPORT artifact's
+ * metadata. The outreach prompt uses these fields directly — never the markdown
+ * body — so copy/style changes to the report don't break the email.
+ */
+export interface OutreachReportInsights {
+  topPainPointTitle?: string;
+  topPainPointEvidence?: string;
+  topOpportunity?: string;
+  primaryEmailAngle?: {
+    hook: string;
+    evidence: string;
+    valueProp: string;
+    cta: string;
+  };
+  /** A short, fact-grounded sentence the model can quote (e.g. "your contact form has only 3 fields"). */
+  deepSignalEvidence?: string;
+}
+
 export const buildOutreachPrompt = (
   params: {
     channel: string;
@@ -35,6 +54,7 @@ export const buildOutreachPrompt = (
     socialProof?: string;
     senderName?: string;
     serviceOffering: string;
+    reportInsights?: OutreachReportInsights;
   },
   campaignContext?: CampaignOutreachContext,
 ): string => {
@@ -58,9 +78,31 @@ export const buildOutreachPrompt = (
     if (lines.length) campaignRules = `\nCampaign rules:\n${lines.join('\n')}\n`;
   }
 
+  let reportBlock = '';
+  if (params.reportInsights) {
+    const r = params.reportInsights;
+    const lines: string[] = [];
+    if (r.topPainPointTitle) lines.push(`- Top observed pain point: ${r.topPainPointTitle}`);
+    if (r.topPainPointEvidence) lines.push(`  Evidence: ${r.topPainPointEvidence}`);
+    if (r.topOpportunity) lines.push(`- Top opportunity: ${r.topOpportunity}`);
+    if (r.deepSignalEvidence) lines.push(`- Concrete signal you may quote: "${r.deepSignalEvidence}"`);
+    if (r.primaryEmailAngle) {
+      lines.push(
+        `- Suggested angle:`,
+        `  Hook: ${r.primaryEmailAngle.hook}`,
+        `  Evidence: ${r.primaryEmailAngle.evidence}`,
+        `  Value prop: ${r.primaryEmailAngle.valueProp}`,
+        `  CTA: ${r.primaryEmailAngle.cta}`,
+      );
+    }
+    if (lines.length) {
+      reportBlock = `\nWebsite-audit insights (use the most concrete one in the opener — these are real findings, not invented):\n${lines.join('\n')}\n`;
+    }
+  }
+
   return `Channel: ${params.channel}
 Tone: ${params.toneProfile}
-Service: ${params.serviceOffering}${campaignRules}
+Service: ${params.serviceOffering}${campaignRules}${reportBlock}
 Personalization context:
 - Opening hook: ${params.openingHook}
 - Their pain point: ${params.painPointReference}

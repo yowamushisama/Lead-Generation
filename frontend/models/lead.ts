@@ -39,6 +39,76 @@ export interface ScoringBreakdown {
   computedAt?: string;
 }
 
+export interface DeepSignals {
+  hasChatbot: boolean;
+  chatbotVendor: string | null;
+  hasEstimateCalculator: boolean;
+  hasBookingWidget: boolean;
+  bookingVendor: string | null;
+  hasLiveChat: boolean;
+  formFieldCount: number | null;
+  hasSchemaMarkup: boolean;
+  schemaTypes: string[];
+  hasReviewSchema: boolean;
+  hasFAQSchema: boolean;
+  hasStickyHeader: boolean;
+  hasClickToCall: boolean;
+  hasFloatingCta: boolean;
+  emergencyPositioning: 'none' | 'mentioned' | 'prominent';
+  detectedCrm: string[];
+  detectedAnalytics: string[];
+  detectedEmailMarketing: string[];
+  locationsListed: number;
+  hasTeamPage: boolean;
+  hasBlog: boolean;
+  hasCaseStudies: boolean;
+  hasMaintenancePlanCopy: boolean;
+  gapCount: number;
+}
+
+export interface PainPoint {
+  title: string;
+  priority: 'high' | 'medium' | 'low';
+  evidence: string;
+  opportunity: string;
+  revenueImpact: { conservative: number; optimistic: number };
+  recommendedSolution: string;
+}
+
+export interface ReportArtifactSummary {
+  id: string;
+  organizationId: string;
+  leadId: string;
+  campaignId: string | null;
+  kind: string;
+  version: number;
+  body: string;
+  metadata: {
+    model: string;
+    tokensUsed: number;
+    latencyMs: number;
+    deepSignalsSnapshot: DeepSignals;
+    painPoints: PainPoint[];
+    topOpportunity: { title: string; rationale: string; estimatedAnnualValue: number };
+    emailAngles: { hook: string; evidence: string; valueProp: string; cta: string }[];
+    coldCallAngles: {
+      opener: string;
+      qualifyingQuestion: string;
+      valuePitch: string;
+      objectionHandlers: { objection: string; response: string }[];
+    }[];
+    recommendations: {
+      phase: 'immediate' | 'short_term' | 'medium_term';
+      title: string;
+      tools: string[];
+      estimatedCostMonthly: { min: number; max: number };
+      estimatedROIMonths: number;
+    }[];
+    totalRevenueOpportunity: { conservative: number; optimistic: number; currency: string };
+  };
+  generatedAt: string;
+}
+
 export interface Lead {
   id: string;
   name: string | null;
@@ -94,6 +164,7 @@ export interface Lead {
     ctaPresent: boolean;
     techStack: string[];
     loadMs: number;
+    deepSignals?: DeepSignals;
   } | null;
   enrichmentStatus?: string | null;
 

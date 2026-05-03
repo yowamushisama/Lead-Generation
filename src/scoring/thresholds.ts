@@ -17,9 +17,9 @@ export const DISCOVERY_THRESHOLDS = {
  * HOT = strong gap signals (likely needs help); WARM = some gaps; COLD = well-established.
  */
 export const OPPORTUNITY_THRESHOLDS = {
-  HOT: 30, // Score >= 30 → HOT  (multiple digital gaps + niche match)
-  WARM: 18, // Score 18–29 → WARM (some gaps, viable prospect)
-  COLD: 0,  // Score < 18  → COLD (too established or off-niche)
+  HOT: 38, // Score >= 38 → HOT  (multiple digital gaps + niche match, deep-signals factored)
+  WARM: 22, // Score 22–37 → WARM (some gaps, viable prospect)
+  COLD: 0,  // Score < 22  → COLD (too established or off-niche)
 } as const;
 
 export function getTier(score: number): LeadTier {

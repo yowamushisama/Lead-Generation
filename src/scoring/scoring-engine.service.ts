@@ -125,8 +125,16 @@ export class ScoringEngineService {
       name: 'discovery(weighted)',
     };
 
+    // Enrich digital-gap input with industry context so service-industry-only
+    // sub-factors (booking widget, 24/7 framing, maintenance plan) gate correctly.
+    const digitalGapWithIndustry: DigitalGapInput = {
+      ...(input.digitalGap ?? {}),
+      industry: input.industry ?? input.digitalGap?.industry ?? null,
+      googleTypes: input.googleTypes ?? input.digitalGap?.googleTypes ?? null,
+    };
+
     return [
-      scoreDigitalGapFactor(input.digitalGap ?? {}),
+      scoreDigitalGapFactor(digitalGapWithIndustry),
       scoreNicheFitFactor(input.googleTypes ?? [], input.targetIndustries ?? []),
       scoreRoleFactor(input.role),
       discoveryWeighted,

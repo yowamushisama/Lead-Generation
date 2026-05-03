@@ -28,10 +28,9 @@ export function LeadIntelligence() {
   const [tierFilter, setTierFilter] = useState<LeadTier | 'all'>('all');
   const [showFilters, setShowFilters]   = useState(false);
   const [showColPicker, setShowColPicker] = useState(false);
-  const [sortKey, setSortKey]       = useState<SortKey>('score');
-  const [sortDir, setSortDir]       = useState<SortDir>('desc');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selected, setSelected]     = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey]   = useState<SortKey>('score');
+  const [sortDir, setSortDir]   = useState<SortDir>('desc');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage]             = useState(1);
 
   const { visible, toggle, resetToDefaults } = useColumnVisibility();
@@ -204,7 +203,6 @@ export function LeadIntelligence() {
         isLoading={isLoading}
         activeCols={activeCols}
         selected={selected}
-        expandedId={expandedId}
         sortKey={sortKey}
         sortDir={sortDir}
         totalPages={totalPages}
@@ -213,7 +211,6 @@ export function LeadIntelligence() {
         pageSize={PAGE_SIZE}
         onToggleAll={toggleAll}
         onSelect={toggleSelect}
-        onExpand={(id) => setExpandedId(expandedId === id ? null : id)}
         onStatusChange={(id, status) => updateMutation.mutate({ id, status })}
         onSort={toggleSort}
         onPageChange={setPage}

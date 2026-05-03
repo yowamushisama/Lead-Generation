@@ -7,6 +7,7 @@ import { AIModule } from '../ai/ai.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { DatabaseModule } from '../database/database.module';
 import { PromptConfigModule } from '../prompt-config/prompt-config.module';
+import { AppConfigModule } from '../config/config.module';
 // Stages
 import { IntentDetectorStage } from './stages/intent-detector.stage';
 import { ICPEnricherStage } from './stages/icp-enricher.stage';
@@ -16,6 +17,8 @@ import { PersonalizerStage } from './stages/personalizer.stage';
 import { OutreachGeneratorStage } from './stages/outreach-generator.stage';
 import { ConversationAssistantStage } from './stages/conversation-assistant.stage';
 import { ICPRefinerStage } from './stages/icp-refiner.stage';
+import { DeepReportGeneratorStage } from './stages/deep-report-generator.stage';
+import { ColdCallScriptGeneratorStage } from './stages/cold-call-script-generator.stage';
 // Processors
 import { IntentProcessor } from './processors/intent.processor';
 import { EnrichmentProcessor } from './processors/enrichment.processor';
@@ -60,6 +63,7 @@ import { OutreachProcessor } from './processors/outreach.processor';
     ScoringModule,
     DatabaseModule,
     PromptConfigModule,
+    AppConfigModule,
   ],
   providers: [
     OrchestratorService,
@@ -72,6 +76,8 @@ import { OutreachProcessor } from './processors/outreach.processor';
     OutreachGeneratorStage,
     ConversationAssistantStage,
     ICPRefinerStage,
+    DeepReportGeneratorStage,
+    ColdCallScriptGeneratorStage,
     // Processors
     IntentProcessor,
     EnrichmentProcessor,
@@ -89,6 +95,8 @@ import { OutreachProcessor } from './processors/outreach.processor';
     OutreachGeneratorStage,
     ConversationAssistantStage,
     ICPRefinerStage,
+    DeepReportGeneratorStage,
+    ColdCallScriptGeneratorStage,
   ],
 })
 export class PipelineModule {}

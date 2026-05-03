@@ -11,7 +11,6 @@ export type { ColId } from '@/constants/lead-columns';
 export type SortKey = 'score' | 'createdAt' | 'name' | 'company';
 export type SortDir = 'asc' | 'desc';
 
-export { LeadExpandedRow } from './lead-expanded-row';
 export { ColumnPicker } from './column-picker';
 export { EnrichmentBadge, Th, SortTh, fmtCount } from './lead-table-primitives';
 
@@ -20,7 +19,6 @@ export function LeadTable({
   isLoading,
   activeCols,
   selected,
-  expandedId,
   sortKey,
   sortDir,
   totalPages,
@@ -29,7 +27,6 @@ export function LeadTable({
   pageSize,
   onToggleAll,
   onSelect,
-  onExpand,
   onStatusChange,
   onSort,
   onPageChange,
@@ -38,7 +35,6 @@ export function LeadTable({
   isLoading: boolean;
   activeCols: ColDef[];
   selected: Set<string>;
-  expandedId: string | null;
   sortKey: SortKey;
   sortDir: SortDir;
   totalPages: number;
@@ -47,7 +43,6 @@ export function LeadTable({
   pageSize: number;
   onToggleAll: () => void;
   onSelect: (id: string) => void;
-  onExpand: (id: string) => void;
   onStatusChange: (id: string, status: LeadStatus) => void;
   onSort: (key: SortKey) => void;
   onPageChange: (page: number) => void;
@@ -108,11 +103,8 @@ export function LeadTable({
                     key={lead.id}
                     lead={lead}
                     selected={selected.has(lead.id)}
-                    expanded={expandedId === lead.id}
                     activeCols={activeCols}
-                    totalColCount={totalColCount}
                     onSelect={() => onSelect(lead.id)}
-                    onExpand={() => onExpand(lead.id)}
                     onStatusChange={(status) => onStatusChange(lead.id, status)}
                   />
                 ))}

@@ -27,13 +27,22 @@ import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { PaginatedResult } from '../common/dto/pagination.dto';
 import { Lead } from '@prisma/client';
+import { ReportArtifactRepository } from '../database/repositories/report-artifact.repository';
+import { MessageRepository } from '../database/repositories/message.repository';
+import { DeepReportGeneratorStage } from '../pipeline/stages/deep-report-generator.stage';
+import { UnprocessableEntityException } from '@nestjs/common';
 
 @ApiTags('leads')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 @Controller('leads')
 export class LeadsController {
-  constructor(private readonly leadsService: LeadsService) {}
+  constructor(
+    private readonly leadsService: LeadsService,
+    private readonly reportRepository: ReportArtifactRepository,
+    private readonly messageRepository: MessageRepository,
+    private readonly deepReportStage: DeepReportGeneratorStage,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new lead' })
@@ -120,5 +129,110 @@ export class LeadsController {
   ): Promise<ApiResponseDto<{ created: number; duplicates: number; errors: number }>> {
     const result = await this.leadsService.bulkCreate(tenant, dtos);
     return ApiResponseDto.success(result, 'Bulk creation completed');
+  }
+
+  @Get(':id/reports')
+  @ApiOperation({ summary: 'Get the latest website-audit report for a lead (markdown + structured insights)' })
+  async getReports(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiResponseDto<unknown>> {
+    // Verify the lead belongs to the tenant before exposing its reports
+    await this.leadsService.findOne(tenant.organizationId, id);
+
+    const [latest, versions] = await Promise.all([
+      this.reportRepository.findLatest(id, 'WEBSITE_REPORT'),
+      this.reportRepository.findAllVersions(id, 'WEBSITE_REPORT'),
+    ]);
+
+    return ApiResponseDto.success({
+      latest,
+      versionCount: versions.length,
+      versions: versions.map((v) => ({
+        id: v.id,
+        version: v.version,
+        generatedAt: v.generatedAt,
+      })),
+    });
+  }
+
+  @Post(':id/reports/regenerate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Regenerate the website-audit report for a lead' })
+  @ApiResponse({ status: 200, description: 'Report regenerated' })
+  @ApiResponse({ status: 422, description: 'Lead has no website audit data' })
+  async regenerateReport(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiResponseDto<unknown>> {
+    const lead = await this.leadsService.findOne(tenant.organizationId, id);
+
+    const websiteAudit = (lead as any).websiteAudit as {
+      title?: string | null;
+      metaDescription?: string | null;
+      loadMs?: number | null;
+      techStack?: string[];
+      ctaPresent?: boolean;
+      deepSignals?: Record<string, unknown>;
+    } | null;
+
+    if (!websiteAudit?.deepSignals) {
+      throw new UnprocessableEntityException(
+        'Lead has no website audit data — run enrichment first',
+      );
+    }
+
+    const result = await this.deepReportStage.process(
+      {
+        leadId: id,
+        organizationId: tenant.organizationId,
+        campaignId: (lead as any).campaignId ?? null,
+        promptInput: {
+          leadName: lead.name,
+          company: lead.company,
+          industry: lead.industry,
+          location: lead.location,
+          googleTypes: (lead as any).googleTypes ?? [],
+          rating: (lead as any).rating ?? null,
+          reviewCount: (lead as any).reviewCount ?? null,
+          lastReviewAt: (lead as any).lastReviewAt
+            ? new Date((lead as any).lastReviewAt as string).toISOString().slice(0, 10)
+            : null,
+          businessHours: (lead as any).businessHours ?? null,
+          websiteUrl: lead.website,
+          websiteAuditSummary: {
+            title: websiteAudit.title,
+            metaDescription: websiteAudit.metaDescription,
+            loadMs: websiteAudit.loadMs,
+            techStack: websiteAudit.techStack,
+            ctaPresent: websiteAudit.ctaPresent,
+          },
+          deepSignals: websiteAudit.deepSignals as any,
+          campaignName: null,
+          targetIndustries: [],
+          serviceOffering: null,
+          uniqueValue: null,
+        },
+      },
+      tenant,
+    );
+
+    return ApiResponseDto.success(result);
+  }
+
+  @Get(':id/cold-call-script')
+  @ApiOperation({ summary: 'Get the latest cold-call script Message for a lead' })
+  async getColdCallScript(
+    @Tenant() tenant: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiResponseDto<unknown>> {
+    await this.leadsService.findOne(tenant.organizationId, id);
+
+    const script = await this.messageRepository.findFirst({
+      where: { leadId: id, type: 'COLD_CALL_SCRIPT' },
+      orderBy: { generatedAt: 'desc' },
+    });
+
+    return ApiResponseDto.success(script);
   }
 }

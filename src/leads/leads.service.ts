@@ -212,6 +212,12 @@ export class LeadsService {
       socialHandles: (lead as any).socialHandles ?? null,
       websiteAudit: (lead as any).websiteAudit ?? null,
       enrichmentStatus: (lead as any).enrichmentStatus ?? null,
+      scoreBreakdown: (lead as any).scoreBreakdown ?? null,
+      painPoints: (lead as any).painPoints ?? null,
+      fears: (lead as any).fears ?? null,
+      desires: (lead as any).desires ?? null,
+      intentReasoning: (lead as any).intentReasoning ?? null,
+      toneProfile: (lead as any).toneProfile ?? null,
       messages: lead.messages.map((m: any) => ({
         id: m.id,
         channel: m.channel,

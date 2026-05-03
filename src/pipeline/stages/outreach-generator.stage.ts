@@ -6,6 +6,7 @@ import { PersonalizationResult } from '../../common/types/personalization.types'
 import {
   ANTI_PATTERN_SYSTEM_PROMPT,
   buildOutreachPrompt,
+  OutreachReportInsights,
 } from '../../ai/prompts/outreach.prompt';
 import { PromptConfigService } from '../../prompt-config/prompt-config.service';
 
@@ -18,6 +19,7 @@ export interface OutreachGeneratorInput {
   senderName?: string;
   personalizationModel?: string;
   campaignId?: string;
+  reportInsights?: OutreachReportInsights;
 }
 
 export interface GeneratedMessage {
@@ -90,6 +92,7 @@ export class OutreachGeneratorStage implements IPipelineStage<
           socialProof: personalization.personalContext.socialProof,
           senderName: input.senderName,
           serviceOffering: input.serviceOffering,
+          reportInsights: input.reportInsights,
         },
         campaignContext,
       );
