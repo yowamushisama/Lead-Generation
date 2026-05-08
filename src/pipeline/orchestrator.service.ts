@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
@@ -19,6 +20,8 @@ export interface PipelineOptions {
   priority?: number;
   skipStages?: string[];
   startFrom?: 'intent' | 'enrich' | 'score' | 'personalize' | 'outreach';
+  /** When true, uses a deterministic BullMQ jobId derived from orgId:source:externalId to prevent in-flight duplicates. */
+  dedupKey?: boolean;
 }
 
 @Injectable()
@@ -50,7 +53,16 @@ export class OrchestratorService {
     const startFrom = options.startFrom ?? 'intent';
     const queue = this.getQueueForStage(startFrom);
 
+    const jobId =
+      options.dedupKey && rawInput.externalId
+        ? createHash('sha256')
+            .update(`${context.organizationId}:${rawInput.source}:${rawInput.externalId}`)
+            .digest('hex')
+            .slice(0, 40)
+        : undefined;
+
     const job = await queue.add(JOB_NAMES.CLASSIFY_INTENT, jobData, {
+      jobId,
       priority: options.priority ?? 0,
       attempts: 3,
       backoff: {

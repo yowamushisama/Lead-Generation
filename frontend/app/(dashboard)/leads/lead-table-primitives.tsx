@@ -52,14 +52,14 @@ export function Field({ label, value }: { label: string; value: React.ReactNode 
   return (
     <div>
       <p className="font-mono text-[9px] uppercase tracking-wider text-mist mb-0.5">{label}</p>
-      <div className="font-mono text-[11px] text-mist">{value}</div>
+      <div className="font-mono text-[12px] text-ink">{value}</div>
     </div>
   );
 }
 
 export function YesNo({ yes }: { yes: boolean }) {
   return (
-    <span className={cn('font-mono text-[10px]', yes ? 'text-jade' : 'text-dusk')}>
+    <span className={cn('font-mono text-[11px]', yes ? 'text-jade' : 'text-mist')}>
       {yes ? 'Yes' : 'No'}
     </span>
   );

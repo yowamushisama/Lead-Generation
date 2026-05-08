@@ -19,9 +19,22 @@ export class GmapsExtractionService {
    * The page must already be on the place detail URL before calling this.
    */
   async extractDetailPage(page: Page): Promise<Omit<GmapsPlace, 'sourceUrl'>> {
-    await (page as any)
-      .waitForSelector(GMAPS_SELECTORS.waitForDetail, { timeout: 10000 })
-      .catch(() => {});
+    // Google Maps SPA: the h1 node appears in the DOM early (shell render) before
+    // React hydrates its text content. waitForSelector fires too soon and page.evaluate
+    // reads empty strings. waitForFunction blocks until the h1 has real text.
+    await (page as any).waitForFunction(
+      (sels: string[]) => {
+        for (const s of sels) {
+          try {
+            const el = document.querySelector(s);
+            if (el?.textContent?.trim()) return true;
+          } catch { /* skip */ }
+        }
+        return false;
+      },
+      GMAPS_SELECTORS.detailName,
+      { timeout: 10000 },
+    );
 
     // Expand the hours section so the table is visible in the DOM
     for (const sel of GMAPS_SELECTORS.detailHoursButton) {
@@ -166,7 +179,7 @@ export class GmapsExtractionService {
 
     return {
       placeId: raw.placeId,
-      name: raw.name || 'Unknown Business',
+      name: raw.name || null,
       rating: raw.rating,
       reviewCount: raw.reviewCount,
       category: raw.category,
@@ -182,22 +195,48 @@ export class GmapsExtractionService {
 
   /**
    * Navigate to a listing URL, extract detail, then navigate back.
+   *
+   * Navigation failures (goto) return null — the URL is permanently unreachable.
+   * Extraction failures (extractDetailPage) are rethrown so retryWithBackoff in
+   * the adapter can retry the whole search query.
    */
   async extractFromUrl(page: Page, url: string): Promise<GmapsPlace | null> {
     try {
       await (page as any).goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      await page.waitForTimeout(this.stealthService.randomDelayMs(800, 2000));
-
-      const data = await this.extractDetailPage(page);
-      return { ...data, sourceUrl: url };
     } catch (error) {
-      this.logger.error({
-        message: 'Failed to extract place detail',
+      this.logger.warn({
+        message: 'Navigation failed for place URL — skipping',
         url,
         error: error instanceof Error ? error.message : String(error),
       });
       return null;
     }
+
+    await page.waitForTimeout(this.stealthService.randomDelayMs(800, 2000));
+
+    // Extraction errors bubble up to retryWithBackoff in the adapter.
+    const data = await this.extractDetailPage(page);
+
+    const missing: string[] = [];
+    if (!data.name) missing.push('name');
+    if (!data.phone) missing.push('phone');
+    if (!data.address) missing.push('address');
+    if (missing.length > 0) {
+      this.logger.warn({ message: 'Empty DOM fields — selectors may be stale', url, missing });
+    }
+
+    // URL-slug fallback when DOM extraction returned no name.
+    let name = data.name;
+    let nameSource: GmapsPlace['nameSource'] = 'dom';
+    if (!name) {
+      const slugMatch = url.match(/\/maps\/place\/([^/]+)\//);
+      if (slugMatch) {
+        name = decodeURIComponent(slugMatch[1]).replace(/\+/g, ' ').replace(/\s+/g, ' ').trim();
+        nameSource = 'url-slug';
+      }
+    }
+
+    return { ...data, name, nameSource, sourceUrl: url };
   }
 
   /**

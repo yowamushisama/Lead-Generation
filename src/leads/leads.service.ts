@@ -42,6 +42,8 @@ export class LeadsService {
       name: dto.name,
       email: dto.email,
       company: dto.company,
+      phone: dto.phone,
+      address: dto.location,
       source: dto.source,
       organizationId,
       externalId: dto.externalId,
@@ -55,6 +57,8 @@ export class LeadsService {
       name: dto.name,
       email: dto.email,
       company: dto.company,
+      phone: dto.phone,
+      address: dto.location,
       source: dto.source,
       organizationId,
     });

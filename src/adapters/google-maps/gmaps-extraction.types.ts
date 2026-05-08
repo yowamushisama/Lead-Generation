@@ -1,6 +1,7 @@
 export interface GmapsPlace {
   placeId: string | null;
-  name: string;
+  name: string | null;
+  nameSource?: 'dom' | 'url-slug';
   rating: number | null;
   reviewCount: number | null;
   category: string | null;

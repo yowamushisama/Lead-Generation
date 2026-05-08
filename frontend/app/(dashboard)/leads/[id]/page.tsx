@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { LeadDetail } from './lead-detail';
 
 export default async function LeadDetailPage({
@@ -6,5 +7,9 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <LeadDetail id={id} />;
+  return (
+    <Suspense>
+      <LeadDetail id={id} />
+    </Suspense>
+  );
 }

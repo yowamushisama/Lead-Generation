@@ -203,12 +203,33 @@ model Campaign {
   leads           Lead[]
   messages        Message[]
   reportArtifacts ReportArtifact[]
+  scrapeCursors   CampaignScrapeCursor[]
+  maxLeadsPerRun  Int?
   isActive        Boolean   @default(true)
   status          String    @default("ACTIVE")
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   @@index([organizationId, status])
   @@index([promptConfigId])
+}
+
+model CampaignScrapeCursor {
+  id                   String    @id @default(uuid())
+  campaign             Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId           String
+  source               String
+  queryKey             String
+  lastRunAt            DateTime?
+  lastScrollSteps      Int       @default(8)
+  totalSeen            Int       @default(0)
+  lastNewCount         Int       @default(0)
+  consecutiveZeroRuns  Int       @default(0)
+  lastNewLeadAt        DateTime?
+  exhausted            Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  @@unique([campaignId, source, queryKey])
+  @@index([campaignId, source])
 }
 
 model ReportArtifact {

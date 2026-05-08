@@ -4,6 +4,8 @@ import { GmapsSearchService } from './gmaps-search.service';
 import { GmapsExtractionService } from './gmaps-extraction.service';
 import { LeadSource } from '../../common/enums/lead-source.enum';
 import type { GmapsPlace } from './gmaps-extraction.types';
+import { LeadRepository } from '../../database/repositories/lead.repository';
+import { CampaignScrapeCursorRepository } from '../../database/repositories/campaign-scrape-cursor.repository';
 
 const mockPlace = (overrides: Partial<GmapsPlace> = {}): GmapsPlace => ({
   placeId: 'ChIJtest1234',
@@ -62,11 +64,22 @@ describe('GoogleMapsAdapter', () => {
       extractTiles: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<GmapsExtractionService>;
 
+    const leadRepository: jest.Mocked<Pick<LeadRepository, 'findMany'>> = {
+      findMany: jest.fn().mockResolvedValue([]),
+    };
+
+    const cursorRepository: jest.Mocked<Pick<CampaignScrapeCursorRepository, 'findOne' | 'upsert'>> = {
+      findOne: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+
     const module = await Test.createTestingModule({
       providers: [
         GoogleMapsAdapter,
         { provide: GmapsSearchService, useValue: searchService },
         { provide: GmapsExtractionService, useValue: extractionService },
+        { provide: LeadRepository, useValue: leadRepository },
+        { provide: CampaignScrapeCursorRepository, useValue: cursorRepository },
       ],
     }).compile();
 

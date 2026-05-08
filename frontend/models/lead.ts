@@ -23,12 +23,19 @@ export type LeadSource =
   | 'manual'
   | 'api';
 
+export interface ScoringSignal {
+  label: string;
+  weight: number;
+  category: string;
+}
+
 export interface ScoringFactor {
   name: string;
   weight: number;
   score: number;
   maxPossible: number;
   reasoning: string;
+  signals?: ScoringSignal[];
 }
 
 export interface ScoringBreakdown {

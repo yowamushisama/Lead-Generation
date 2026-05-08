@@ -1,11 +1,13 @@
 import { cn } from '@/lib/utils';
 
 export function Card({
+  id,
   className,
   children,
   glow,
   accent,
 }: {
+  id?: string;
   className?: string;
   children: React.ReactNode;
   glow?: 'gold' | 'aqua' | 'orchid' | 'jade' | 'crimson';
@@ -13,6 +15,7 @@ export function Card({
 }) {
   return (
     <div
+      id={id}
       className={cn(
         'rounded-xl border border-ink/[0.06] bg-surface p-4',
         glow === 'gold' && 'ring-glow-gold',

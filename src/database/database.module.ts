@@ -14,6 +14,7 @@ import { AnalyticsEventRepository } from './repositories/analytics-event.reposit
 import { UserRepository } from './repositories/user.repository';
 import { LinkedInRunRepository } from './repositories/linkedin-run.repository';
 import { ReportArtifactRepository } from './repositories/report-artifact.repository';
+import { CampaignScrapeCursorRepository } from './repositories/campaign-scrape-cursor.repository';
 
 @Global()
 @Module({
@@ -33,6 +34,7 @@ import { ReportArtifactRepository } from './repositories/report-artifact.reposit
     UserRepository,
     LinkedInRunRepository,
     ReportArtifactRepository,
+    CampaignScrapeCursorRepository,
   ],
   exports: [
     PrismaService,
@@ -50,6 +52,7 @@ import { ReportArtifactRepository } from './repositories/report-artifact.reposit
     UserRepository,
     LinkedInRunRepository,
     ReportArtifactRepository,
+    CampaignScrapeCursorRepository,
   ],
 })
 export class DatabaseModule {}

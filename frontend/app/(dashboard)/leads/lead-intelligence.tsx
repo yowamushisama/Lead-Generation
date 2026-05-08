@@ -6,9 +6,10 @@ import {
   Download, Filter, LayoutGrid, Table2, Search, X, Columns,
 } from 'lucide-react';
 import { leads as leadsApi } from '@/lib/api-client';
-import type { Lead, LeadStatus, LeadTier } from '@/models';
+import type { LeadStatus, LeadTier } from '@/models';
 import { OPTIONAL_COLS } from '@/constants/lead-columns';
-import { ALL_STATUSES, TIER_OPTIONS } from '@/constants/leads';
+import { LEADS_COL_VISIBILITY_KEY_CAMPAIGN } from '@/constants/lead-columns';
+import { TIER_OPTIONS } from '@/constants/leads';
 import { SourceToggle, type SourceTab } from '@/components/ui/source-toggle';
 import { cn } from '@/lib/utils';
 import { exportLeadsCsv } from './leads-csv';
@@ -19,7 +20,13 @@ import { useColumnVisibility } from './use-column-visibility';
 
 const PAGE_SIZE = 50;
 
-export function LeadIntelligence() {
+export function LeadIntelligence({
+  campaignId,
+  embedded = false,
+}: {
+  campaignId?: string;
+  embedded?: boolean;
+}) {
   const queryClient = useQueryClient();
 
   const [view, setView]             = useState<'table' | 'kanban'>('table');
@@ -33,7 +40,8 @@ export function LeadIntelligence() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage]             = useState(1);
 
-  const { visible, toggle, resetToDefaults } = useColumnVisibility();
+  const colVisKey = campaignId ? LEADS_COL_VISIBILITY_KEY_CAMPAIGN : undefined;
+  const { visible, toggle, resetToDefaults } = useColumnVisibility(colVisKey);
   const colPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,9 +56,10 @@ export function LeadIntelligence() {
   }, [showColPicker]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['leads', source, tierFilter, PAGE_SIZE, page],
+    queryKey: ['leads', { campaignId, source, tier: tierFilter, page, pageSize: PAGE_SIZE }],
     queryFn: () =>
       leadsApi.list({
+        ...(campaignId ? { campaignId } : {}),
         source: source === 'all' ? undefined : source,
         tier: tierFilter === 'all' ? undefined : tierFilter,
         limit: PAGE_SIZE,
@@ -124,7 +133,7 @@ export function LeadIntelligence() {
     [total],
   );
 
-  if (view === 'kanban') {
+  if (!embedded && view === 'kanban') {
     return (
       <div className="space-y-4 animate-fade-in">
         <ViewHeader view={view} setView={setView} total={total} selectedCount={selected.size} onExport={exportCSV} />
@@ -136,7 +145,9 @@ export function LeadIntelligence() {
   return (
     <div className="space-y-4 animate-fade-in">
 
-      <ViewHeader view={view} setView={setView} total={total} selectedCount={selected.size} onExport={exportCSV} />
+      {!embedded && (
+        <ViewHeader view={view} setView={setView} total={total} selectedCount={selected.size} onExport={exportCSV} />
+      )}
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
@@ -196,6 +207,16 @@ export function LeadIntelligence() {
           </button>
           {showColPicker && <ColumnPicker visible={visible} onToggle={toggle} onReset={resetToDefaults} />}
         </div>
+
+        {embedded && (
+          <button
+            onClick={exportCSV}
+            className="ml-auto flex h-9 items-center gap-1.5 rounded-lg border border-ink/[0.14] bg-surface px-3.5 font-mono text-[11px] font-500 text-ink/70 transition-colors hover:border-ink/30 hover:text-ink hover:bg-ink/[0.04]"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
+        )}
       </div>
 
       <LeadTable
@@ -209,6 +230,7 @@ export function LeadIntelligence() {
         page={page}
         total={total}
         pageSize={PAGE_SIZE}
+        campaignId={campaignId}
         onToggleAll={toggleAll}
         onSelect={toggleSelect}
         onStatusChange={(id, status) => updateMutation.mutate({ id, status })}
@@ -219,7 +241,7 @@ export function LeadIntelligence() {
   );
 }
 
-// ── View header ───────────────────────────────────────────────────────────────
+// ── View header (page variant only) ──────────────────────────────────────────
 
 function ViewHeader({
   view, setView, total, selectedCount, onExport,

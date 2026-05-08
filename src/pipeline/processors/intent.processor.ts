@@ -8,6 +8,7 @@ import { IntentDetectorStage } from '../stages/intent-detector.stage';
 import { LeadRepository } from '../../database/repositories/lead.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { OrchestratorService } from '../orchestrator.service';
+import { DeduplicationService } from '../../leads/deduplication.service';
 
 @Processor(QUEUE_NAMES.INTENT)
 export class IntentProcessor extends WorkerHost {
@@ -17,6 +18,7 @@ export class IntentProcessor extends WorkerHost {
     private readonly intentStage: IntentDetectorStage,
     private readonly leadRepository: LeadRepository,
     private readonly orchestrator: OrchestratorService,
+    private readonly deduplicationService: DeduplicationService,
   ) {
     super();
   }
@@ -32,9 +34,44 @@ export class IntentProcessor extends WorkerHost {
       let resolvedLeadId = leadId;
       if (!resolvedLeadId && rawInput) {
         const meta = (rawInput.metadata ?? {}) as Record<string, unknown>;
+
+        // Persist-boundary dedup: skip if already exists (last line of defence after adapter pre-skip + BullMQ jobId dedup)
+        const isDuplicate = await this.deduplicationService.checkDuplicate({
+          name: rawInput.name ?? '',
+          email: rawInput.email,
+          company: rawInput.company,
+          phone: rawInput.phone,
+          address: rawInput.location,
+          source: rawInput.source,
+          organizationId,
+          externalId: rawInput.externalId,
+        });
+
+        if (isDuplicate) {
+          this.logger.log({
+            message: 'Duplicate skipped at persist boundary',
+            jobId: job.id,
+            externalId: rawInput.externalId,
+            source: rawInput.source,
+            organizationId,
+          });
+          return;
+        }
+
+        const contentHash = this.deduplicationService.computeContentHash({
+          name: rawInput.name ?? '',
+          email: rawInput.email,
+          company: rawInput.company,
+          phone: rawInput.phone,
+          address: rawInput.location,
+          source: rawInput.source,
+          organizationId,
+        });
+
         const lead = await this.leadRepository.create({
           data: {
             organizationId,
+            externalId: rawInput.externalId,
             source: rawInput.source,
             sourceUrl: rawInput.sourceUrl,
             sourceType: rawInput.sourceType ?? 'intent',
@@ -50,6 +87,7 @@ export class IntentProcessor extends WorkerHost {
             phone: rawInput.phone,
             website: rawInput.website,
             originalContent: rawInput.originalContent,
+            contentHash,
             // Persist Google Maps discovery fields to their dedicated columns
             ...(rawInput.sourceType === 'discovery' && {
               placeId: meta.placeId as string | undefined,

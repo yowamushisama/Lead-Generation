@@ -16,13 +16,12 @@ export class GmapsSearchService {
     return this.stealthService.newPage(GMAPS_PROFILE_KEY);
   }
 
-  buildSearchUrl(industry: string, location: string): string {
-    const query = `${industry} in ${location}`;
-    return `https://www.google.com/maps/search/${encodeURIComponent(query)}/`;
+  buildSearchUrl(searchTerm: string): string {
+    return `https://www.google.com/maps/search/${encodeURIComponent(searchTerm)}/`;
   }
 
-  async navigateToSearch(page: Page, industry: string, location: string, organizationId: string): Promise<void> {
-    const url = this.buildSearchUrl(industry, location);
+  async navigateToSearch(page: Page, searchTerm: string, organizationId: string): Promise<void> {
+    const url = this.buildSearchUrl(searchTerm);
 
     const mouseX = Math.floor(Math.random() * 800) + 100;
     const mouseY = Math.floor(Math.random() * 400) + 100;

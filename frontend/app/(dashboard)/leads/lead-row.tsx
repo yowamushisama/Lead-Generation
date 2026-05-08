@@ -11,11 +11,12 @@ import { cn, relativeTime } from '@/lib/utils';
 import { EnrichmentBadge, fmtCount } from './lead-table-primitives';
 
 export function LeadRowGroup({
-  lead, selected, activeCols, onSelect, onStatusChange,
+  lead, selected, activeCols, campaignId, onSelect, onStatusChange,
 }: {
   lead: Lead;
   selected: boolean;
   activeCols: ColDef[];
+  campaignId?: string;
   onSelect: () => void;
   onStatusChange: (s: LeadStatus) => void;
 }) {
@@ -24,6 +25,7 @@ export function LeadRowGroup({
       lead={lead}
       selected={selected}
       activeCols={activeCols}
+      campaignId={campaignId}
       onSelect={onSelect}
       onStatusChange={onStatusChange}
     />
@@ -31,11 +33,12 @@ export function LeadRowGroup({
 }
 
 function LeadRow({
-  lead, selected, activeCols, onSelect, onStatusChange,
+  lead, selected, activeCols, campaignId, onSelect, onStatusChange,
 }: {
   lead: Lead;
   selected: boolean;
   activeCols: ColDef[];
+  campaignId?: string;
   onSelect: () => void;
   onStatusChange: (s: LeadStatus) => void;
 }) {
@@ -46,16 +49,19 @@ function LeadRow({
     lead.tier === 'WARM' ? 'row-warm' :
     lead.tier === 'COLD' ? 'row-cold' : '';
 
+  const detailHref = campaignId
+    ? `/leads/${lead.id}?campaignId=${campaignId}`
+    : `/leads/${lead.id}`;
+
   return (
     <tr
       className={cn(
-        'group border-b border-ink/[0.04] transition-colors hover:bg-ink/[0.03] cursor-pointer',
+        'group border-b border-ink/[0.04] transition-colors hover:bg-ink/[0.03]',
         selected && 'bg-aqua/[0.03]',
         tierBorderClass,
       )}
-      onClick={() => router.push(`/leads/${lead.id}`)}
     >
-      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+      <td className="px-3 py-2.5">
         <input
           type="checkbox"
           checked={selected}
@@ -64,11 +70,11 @@ function LeadRow({
         />
       </td>
 
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-2.5 cursor-pointer" onClick={() => router.push(detailHref)}>
         <div className="flex items-center gap-1.5">
           <ChevronRight className="h-3 w-3 shrink-0 text-dusk group-hover:text-aqua transition-colors" />
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-500 text-ink">{lead.company ?? lead.name ?? '—'}</p>
+            <p className="truncate text-[12px] font-500 text-ink hover:text-aqua transition-colors">{lead.company ?? lead.name ?? '—'}</p>
             {lead.name && lead.company && (
               <p className="truncate font-mono text-[10px] text-mist">{lead.name}</p>
             )}
@@ -84,7 +90,7 @@ function LeadRow({
         {lead.tier ? <TierBadge tier={lead.tier} /> : <span className="text-dusk">—</span>}
       </td>
 
-      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+      <td className="px-3 py-2.5">
         <select
           value={lead.status}
           onChange={(e) => onStatusChange(e.target.value as LeadStatus)}
@@ -97,7 +103,7 @@ function LeadRow({
       </td>
 
       {activeCols.map((col) => (
-        <td key={col.id} className="px-3 py-2.5" onClick={col.id === 'website' ? (e) => e.stopPropagation() : undefined}>
+        <td key={col.id} className="px-3 py-2.5">
           <OptionalCell lead={lead} colId={col.id} />
         </td>
       ))}

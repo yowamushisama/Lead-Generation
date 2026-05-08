@@ -24,6 +24,7 @@
     "linkedin:print-run": "npm run build && node dist/scripts/print-latest-linkedin-run.js",
     "gmaps:test-live": "npm run build && node dist/scripts/test-google-maps-adapter.js",
     "gmaps:dump-dom": "npm run build && node dist/scripts/dump-gmaps-dom.js",
+    "gmaps:test-extract": "npm run build && node dist/scripts/test-gmaps-extract.js",
     "ai:test": "npm run build && node dist/scripts/test-ai-provider.js",
     "ai:test:verbose": "npm run build && node dist/scripts/test-ai-provider.js -- --verbose",
     "prisma:generate": "prisma generate",

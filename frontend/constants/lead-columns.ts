@@ -33,3 +33,4 @@ export const DEFAULT_VISIBILITY: Record<ColId, boolean> = Object.fromEntries(
 ) as Record<ColId, boolean>;
 
 export const LEADS_COL_VISIBILITY_KEY = 'leads-column-visibility';
+export const LEADS_COL_VISIBILITY_KEY_CAMPAIGN = 'leads-column-visibility-campaign';

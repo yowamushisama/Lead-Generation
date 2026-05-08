@@ -6,6 +6,8 @@ interface DuplicateCheckInput {
   name: string;
   email?: string;
   company?: string;
+  phone?: string;
+  address?: string;
   source: string;
   organizationId: string;
   externalId?: string;
@@ -15,6 +17,8 @@ interface ContentHashInput {
   name: string;
   email?: string;
   company?: string;
+  phone?: string;
+  address?: string;
   source: string;
   organizationId: string;
 }
@@ -101,6 +105,8 @@ export class DeduplicationService {
       name: input.name.toLowerCase().trim(),
       email: input.email?.toLowerCase().trim() ?? '',
       company: input.company?.toLowerCase().trim() ?? '',
+      phone: (input.phone ?? '').replace(/\D/g, ''),
+      address: (input.address ?? '').toLowerCase().replace(/\s+/g, ' ').trim(),
       source: input.source.toLowerCase(),
       organizationId: input.organizationId,
     };

@@ -59,6 +59,8 @@ const FACTOR_COLORS: Record<string, string> = {
   budget:   'bg-jade',
   icp:      'bg-tangerine',
   negative: 'bg-rose',
+  digital:  'bg-aqua',
+  gap:      'bg-aqua',
 };
 
 function factorColor(name: string): string {
@@ -70,15 +72,21 @@ function factorColor(name: string): string {
 }
 
 export function ScoreBreakdown({ breakdown }: { breakdown: ScoringBreakdown }) {
+  const sumMaxPossible = breakdown.factors.reduce((sum, f) => sum + f.maxPossible, 0);
+
   return (
     <div className="space-y-2">
-      {/* Overall */}
+      {/* Overall — normalized % (primary) + raw pts (secondary) */}
       <div className="flex items-center justify-between mb-3">
         <span className="section-label">Score Breakdown</span>
-        <span className="num font-mono text-sm font-600 text-ink">
-          {breakdown.normalizedScore ?? breakdown.totalScore}
-          <span className="text-dusk">/100</span>
-        </span>
+        <div className="text-right">
+          <p className="num font-mono text-sm font-600 text-ink">
+            {(breakdown.normalizedScore ?? breakdown.totalScore).toFixed(1)}%
+          </p>
+          <p className="font-mono text-[10px] text-dusk">
+            {breakdown.totalScore} of {sumMaxPossible} pts
+          </p>
+        </div>
       </div>
 
       {/* Factor bars */}
@@ -89,10 +97,10 @@ export function ScoreBreakdown({ breakdown }: { breakdown: ScoringBreakdown }) {
         return (
           <div key={factor.name} className="group">
             <div className="flex items-center justify-between mb-1">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-dusk">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-mist">
                 {factor.name}
               </span>
-              <span className="num font-mono text-[10px] text-mist">
+              <span className="num font-mono text-[10px] text-ink">
                 {factor.score}/{factor.maxPossible}
               </span>
             </div>
@@ -103,7 +111,7 @@ export function ScoreBreakdown({ breakdown }: { breakdown: ScoringBreakdown }) {
               />
             </div>
             {factor.reasoning && (
-              <p className="mt-0.5 hidden text-[10px] text-dusk group-hover:block">
+              <p className="mt-0.5 hidden text-[11px] text-mist leading-relaxed group-hover:block">
                 {factor.reasoning}
               </p>
             )}

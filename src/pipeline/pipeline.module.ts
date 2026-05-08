@@ -3,6 +3,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { OrchestratorService } from './orchestrator.service';
 import { QUEUE_NAMES } from '../common/constants/queue-names';
+import { DeduplicationService } from '../leads/deduplication.service';
+import { HashUtil } from '../common/utils/hash.util';
 import { AIModule } from '../ai/ai.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { DatabaseModule } from '../database/database.module';
@@ -67,6 +69,8 @@ import { OutreachProcessor } from './processors/outreach.processor';
   ],
   providers: [
     OrchestratorService,
+    DeduplicationService,
+    HashUtil,
     // Stages
     IntentDetectorStage,
     ICPEnricherStage,

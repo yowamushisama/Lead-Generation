@@ -25,6 +25,7 @@ export function LeadTable({
   page,
   total,
   pageSize,
+  campaignId,
   onToggleAll,
   onSelect,
   onStatusChange,
@@ -41,6 +42,7 @@ export function LeadTable({
   page: number;
   total: number;
   pageSize: number;
+  campaignId?: string;
   onToggleAll: () => void;
   onSelect: (id: string) => void;
   onStatusChange: (id: string, status: LeadStatus) => void;
@@ -104,6 +106,7 @@ export function LeadTable({
                     lead={lead}
                     selected={selected.has(lead.id)}
                     activeCols={activeCols}
+                    campaignId={campaignId}
                     onSelect={() => onSelect(lead.id)}
                     onStatusChange={(status) => onStatusChange(lead.id, status)}
                   />

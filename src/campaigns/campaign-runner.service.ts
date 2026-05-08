@@ -8,6 +8,7 @@ import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { CampaignRepository } from '../database/repositories/campaign.repository';
 import { OrchestratorService } from '../pipeline/orchestrator.service';
 import { RedisService } from '../database/redis.service';
+import { ICPConfig } from '../common/types/icp.types';
 
 export type CampaignRunTrigger = 'activation' | 'scheduled' | 'manual';
 
@@ -94,6 +95,13 @@ export class CampaignRunnerService {
         targetLocations: true,
         targetIndustries: true,
         settings: true,
+        icpProfile: {
+          select: {
+            config: true,
+            targetLocations: true,
+            targetIndustries: true,
+          },
+        },
       },
     });
 
@@ -110,8 +118,21 @@ export class CampaignRunnerService {
     const requestedSources = this.resolveRequestedSources(targetSources);
     const maxResults = this.readIntEnv('CAMPAIGN_RUN_MAX_RESULTS_PER_ADAPTER');
     const keywords = ((campaign.keywords as string[] | null) ?? []).filter(Boolean);
-    const locations = ((campaign.targetLocations as string[] | null) ?? []).filter(Boolean);
-    const industries = ((campaign.targetIndustries as string[] | null) ?? []).filter(Boolean);
+    const campaignLocations = ((campaign.targetLocations as string[] | null) ?? []).filter(Boolean);
+    const campaignIndustries = ((campaign.targetIndustries as string[] | null) ?? []).filter(Boolean);
+    const icpConfig = (campaign.icpProfile?.config as ICPConfig | null) ?? {} as ICPConfig;
+    const icpLocations = (
+      ((campaign.icpProfile?.targetLocations as string[] | null) ?? []).filter(Boolean).length > 0
+        ? (campaign.icpProfile?.targetLocations as string[])
+        : (icpConfig.targetLocations ?? [])
+    ).filter(Boolean);
+    const icpIndustries = (
+      ((campaign.icpProfile?.targetIndustries as string[] | null) ?? []).filter(Boolean).length > 0
+        ? (campaign.icpProfile?.targetIndustries as string[])
+        : (icpConfig.targetIndustries ?? [])
+    ).filter(Boolean);
+    const locations = campaignLocations.length > 0 ? campaignLocations : icpLocations;
+    const industries = campaignIndustries.length > 0 ? campaignIndustries : icpIndustries;
 
     const summary: CampaignRunSummary = {
       campaignId,
@@ -133,6 +154,8 @@ export class CampaignRunnerService {
       keywordsCount: keywords.length,
       locationsCount: locations.length,
       industriesCount: industries.length,
+      locationsSource: campaignLocations.length > 0 ? 'campaign' : (icpLocations.length > 0 ? 'icp' : 'none'),
+      industriesSource: campaignIndustries.length > 0 ? 'campaign' : (icpIndustries.length > 0 ? 'icp' : 'none'),
     });
 
     for (const source of requestedSources) {

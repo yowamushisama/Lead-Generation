@@ -1,4 +1,4 @@
-import { ScoringFactor } from '../../common/interfaces/scoring-factor.interface';
+import { ScoringFactor, ScoringSignal } from '../../common/interfaces/scoring-factor.interface';
 import { WebsiteAuditInput, DigitalGapInput, DeepSignalsInput } from './digital-gap-factor.types';
 import {
   GENERIC_TITLES,
@@ -21,9 +21,13 @@ const MAX_POSSIBLE = 50;
  *
  * UNREACHABLE / TIMEOUT statuses stay neutral (Cloudflare false-positive guard).
  */
+function sig(label: string, weight: number, category: string): ScoringSignal {
+  return { label, weight, category };
+}
+
 export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
   let score = 0;
-  const signals: string[] = [];
+  const signals: ScoringSignal[] = [];
 
   const status = input.enrichmentStatus ?? null;
   const audit = input.websiteAudit ?? null;
@@ -34,33 +38,33 @@ export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
   // ── Website existence ────────────────────────────────────────────────────────
   if (status === 'NO_WEBSITE') {
     score += 12;
-    signals.push('no website (+12)');
+    signals.push(sig('no website', 12, 'tech'));
   } else if (status === 'OK' && audit) {
     if (!audit.title || GENERIC_TITLES.test(audit.title.trim())) {
       score += 5;
-      signals.push('missing or generic title (+5)');
+      signals.push(sig('missing or generic title', 5, 'seo'));
     }
 
     if (!audit.metaDescription) {
       score += 3;
-      signals.push('missing meta description (+3)');
+      signals.push(sig('missing meta description', 3, 'seo'));
     }
 
     if (audit.ctaPresent === false) {
       score += 4;
-      signals.push('no CTA on homepage (+4)');
+      signals.push(sig('no CTA on homepage', 4, 'seo'));
     }
 
     if (typeof audit.loadMs === 'number' && audit.loadMs > 3000) {
       score += 3;
-      signals.push(`slow load ${audit.loadMs}ms (+3)`);
+      signals.push(sig(`slow load ${audit.loadMs}ms`, 3, 'tech'));
     }
 
     const hasSocial =
       social && (social.instagram || social.facebook || social.tiktok);
     if (!hasSocial) {
       score += 3;
-      signals.push('no social presence detected (+3)');
+      signals.push(sig('no social presence detected', 3, 'tech'));
     }
 
     // ── Deep signals (only when website is reachable) ──────────────────────────
@@ -68,22 +72,22 @@ export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
 
     if (deep.hasChatbot === false) {
       score += 5;
-      signals.push('no chatbot (+5)');
+      signals.push(sig('no chatbot', 5, 'ux'));
     }
 
     if (deep.hasEstimateCalculator === false) {
       score += 4;
-      signals.push('no estimate calculator (+4)');
+      signals.push(sig('no estimate calculator', 4, 'ux'));
     }
 
     if (deep.hasBookingWidget === false && isServiceIndustry) {
       score += 5;
-      signals.push('no booking widget (+5)');
+      signals.push(sig('no booking widget', 5, 'ux'));
     }
 
     if (deep.hasSchemaMarkup === false) {
       score += 3;
-      signals.push('no schema markup (+3)');
+      signals.push(sig('no schema markup', 3, 'tech'));
     }
 
     if (
@@ -92,22 +96,22 @@ export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
       input.reviewCount > 50
     ) {
       score += 2;
-      signals.push('reviews not exposed via schema (+2)');
+      signals.push(sig('reviews not exposed via schema', 2, 'tech'));
     }
 
     if (typeof deep.formFieldCount === 'number' && deep.formFieldCount < 4) {
       score += 2;
-      signals.push(`generic contact form (${deep.formFieldCount} fields) (+2)`);
+      signals.push(sig(`generic contact form (${deep.formFieldCount} fields)`, 2, 'tech'));
     }
 
     if (deep.emergencyPositioning === 'none' && is247Industry) {
       score += 3;
-      signals.push('no emergency/24-7 positioning (+3)');
+      signals.push(sig('no emergency/24-7 positioning', 3, 'positioning'));
     }
 
     if (Array.isArray(deep.detectedCrm) && deep.detectedCrm.length === 0) {
       score += 2;
-      signals.push('no CRM detected (+2)');
+      signals.push(sig('no CRM detected', 2, 'tech'));
     }
 
     if (
@@ -115,12 +119,12 @@ export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
       deep.detectedEmailMarketing.length === 0
     ) {
       score += 2;
-      signals.push('no email marketing detected (+2)');
+      signals.push(sig('no email marketing detected', 2, 'tech'));
     }
 
     if (deep.hasMaintenancePlanCopy === false && isServiceIndustry) {
       score += 2;
-      signals.push('no maintenance/membership plan (+2)');
+      signals.push(sig('no maintenance/membership plan', 2, 'ux'));
     }
   }
   // UNREACHABLE / TIMEOUT → neutral
@@ -128,7 +132,7 @@ export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
   // ── Review signals (independent of website status) ────────────────────────────
   if (typeof input.reviewCount === 'number' && input.reviewCount < 50) {
     score += 5;
-    signals.push(`low review count ${input.reviewCount} (+5)`);
+    signals.push(sig(`low review count (${input.reviewCount})`, 5, 'reviews'));
   }
 
   if (
@@ -137,7 +141,7 @@ export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
     input.rating < 4.2
   ) {
     score += 3;
-    signals.push(`mediocre rating ${input.rating} (+3)`);
+    signals.push(sig(`mediocre rating (${input.rating})`, 3, 'reviews'));
   }
 
   if (input.lastReviewAt) {
@@ -148,19 +152,21 @@ export function scoreDigitalGapFactor(input: DigitalGapInput): ScoringFactor {
     const age = Date.now() - lastReview.getTime();
     if (!isNaN(age) && age > SIX_MONTHS_MS) {
       score += 5;
-      signals.push(`last review >6 months ago (+5)`);
+      signals.push(sig('last review >6 months ago', 5, 'reviews'));
     }
   }
+
+  const legacyReasoning = signals.length > 0
+    ? `Digital opportunity signals: ${signals.map(s => `${s.label} (+${s.weight})`).join(', ')}`
+    : 'No digital gaps detected';
 
   return {
     name: 'digital-gap',
     weight: 1,
     score: Math.min(score, MAX_POSSIBLE),
     maxPossible: MAX_POSSIBLE,
-    reasoning:
-      signals.length > 0
-        ? `Digital opportunity signals: ${signals.join(', ')}`
-        : 'No digital gaps detected',
+    reasoning: legacyReasoning,
+    signals,
   };
 }
 
