@@ -85,7 +85,7 @@ describe('LeadsController', () => {
     it('returns paginated lead list', async () => {
       mockLeadsService.findAll.mockResolvedValue(paginatedLeads);
 
-      const res = await controller.findAll(tenant as any, {} as any, {} as any);
+      const res = await controller.findAll(tenant as any, {} as any);
 
       expect(res.success).toBe(true);
       expect(res.data).toEqual(paginatedLeads);

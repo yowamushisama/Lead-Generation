@@ -5,8 +5,10 @@ import { AdapterRegistryService } from '../adapters/adapter-registry.service';
 import { AppConfigService } from '../config/config.service';
 import { LeadSource } from '../common/enums/lead-source.enum';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
+import { RawLeadInput } from '../common/interfaces/lead-input.interface';
 import { CampaignRepository } from '../database/repositories/campaign.repository';
 import { OrchestratorService } from '../pipeline/orchestrator.service';
+import { LeadIngestionService } from '../pipeline/lead-ingestion.service';
 import { RedisService } from '../database/redis.service';
 import { ICPConfig } from '../common/types/icp.types';
 
@@ -18,7 +20,10 @@ export interface CampaignRunSummary {
   adaptersAttempted: string[];
   adaptersUsed: string[];
   skippedAdapters: Array<{ adapter: string; reason: string }>;
+  saved: number;
+  duplicates: number;
   enqueued: number;
+  errors: number;
 }
 
 @Injectable()
@@ -35,6 +40,7 @@ export class CampaignRunnerService {
     private readonly campaignRepository: CampaignRepository,
     private readonly adapterRegistry: AdapterRegistryService,
     private readonly orchestrator: OrchestratorService,
+    private readonly leadIngestion: LeadIngestionService,
     private readonly configService: ConfigService,
     private readonly appConfig: AppConfigService,
     private readonly redis: RedisService,
@@ -140,7 +146,10 @@ export class CampaignRunnerService {
       adaptersAttempted: requestedSources,
       adaptersUsed: [],
       skippedAdapters: [],
+      saved: 0,
+      duplicates: 0,
       enqueued: 0,
+      errors: 0,
     };
 
     this.logger.log({
@@ -230,20 +239,72 @@ export class CampaignRunnerService {
         ...(maxResults ? { maxResults } : {}),
       };
 
+      // Phase 1: persist all scraped leads before enqueuing any for processing.
+      const toEnqueue: Array<{ leadId: string; rawInput: RawLeadInput }> = [];
       for await (const lead of adapter.collect(config)) {
-        const jobId = await this.orchestrator.enqueueLead(lead, tenant, { campaignId });
-        summary.enqueued++;
+        try {
+          const ingestion = await this.leadIngestion.ingestRawLead(lead, tenant, { campaignId });
 
-        if (this.isEnabled('CAMPAIGN_RUN_DEBUG')) {
-          this.logger.log({
-            message: 'Campaign lead enqueued',
+          if (!ingestion.created) {
+            summary.duplicates++;
+            continue;
+          }
+
+          summary.saved++;
+          toEnqueue.push({ leadId: ingestion.lead.id, rawInput: lead });
+        } catch (error) {
+          summary.errors++;
+          this.logger.error({
+            message: 'Campaign lead persist failed',
             campaignId,
             organizationId: tenant.organizationId,
             adapter: adapter.name,
             trigger,
-            jobId,
             leadName: lead.name,
             sourceUrl: lead.sourceUrl,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      this.logger.log({
+        message: 'Campaign scrape complete — starting pipeline enqueue',
+        campaignId,
+        organizationId: tenant.organizationId,
+        adapter: adapter.name,
+        saved: summary.saved,
+        duplicates: summary.duplicates,
+      });
+
+      // Phase 2: enqueue all newly saved leads for pipeline processing.
+      for (const { leadId, rawInput } of toEnqueue) {
+        try {
+          const jobId = await this.orchestrator.enqueuePersistedLead(leadId, rawInput, tenant, { campaignId });
+          summary.enqueued++;
+
+          if (this.isEnabled('CAMPAIGN_RUN_DEBUG')) {
+            this.logger.log({
+              message: 'Campaign lead enqueued',
+              campaignId,
+              organizationId: tenant.organizationId,
+              adapter: adapter.name,
+              trigger,
+              leadId,
+              jobId,
+              leadName: rawInput.name,
+              sourceUrl: rawInput.sourceUrl,
+            });
+          }
+        } catch (error) {
+          summary.errors++;
+          this.logger.error({
+            message: 'Campaign lead enqueue failed',
+            campaignId,
+            organizationId: tenant.organizationId,
+            adapter: adapter.name,
+            trigger,
+            leadId,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
@@ -254,7 +315,10 @@ export class CampaignRunnerService {
       campaignId,
       trigger,
       organizationId: tenant.organizationId,
+      saved: summary.saved,
+      duplicates: summary.duplicates,
       enqueued: summary.enqueued,
+      errors: summary.errors,
       adaptersUsed: summary.adaptersUsed,
       skippedAdapters: summary.skippedAdapters,
     });

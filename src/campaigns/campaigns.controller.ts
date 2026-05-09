@@ -146,10 +146,10 @@ export class CampaignsController {
   @ApiOperation({
     summary: 'Manually trigger the collection pipeline',
     description:
-      'Runs every configured adapter for an ACTIVE campaign on demand and enqueues the discovered leads to the intent stage. Returns a summary of adapters used, skipped reasons, and number of leads enqueued.',
+      'Runs every configured adapter for an ACTIVE campaign on demand, persists each discovered lead, then enqueues new leads to the intent stage. Returns a summary of adapters used, skipped reasons, saved leads, duplicates, errors, and enqueued jobs.',
   })
   @ApiParam({ name: 'id', description: 'Campaign UUID' })
-  @ApiResponse({ status: 200, description: 'Run completed (leads enqueued).', type: ApiResponseDto<CampaignRunSummaryDto> })
+  @ApiResponse({ status: 200, description: 'Run completed (leads saved and enqueued).', type: ApiResponseDto<CampaignRunSummaryDto> })
   @ApiResponse({ status: 403, description: 'Campaign is not ACTIVE.' })
   @ApiResponse({ status: 404, description: 'Campaign not found.' })
   @ApiResponse({ status: 401, description: 'Missing or invalid JWT.' })

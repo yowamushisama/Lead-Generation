@@ -41,6 +41,7 @@ export class OutreachProcessor extends WorkerHost {
     this.logger.log({ message: `Processing outreach job`, jobId: job.id, leadId });
 
     try {
+      if (!leadId) throw new Error(`Outreach job ${job.id} is missing leadId`);
       const [lead, org, latestReport] = await Promise.all([
         this.leadRepository.findUnique({ where: { id: leadId } }),
         this.organizationRepository.findUnique({ where: { id: organizationId } }),

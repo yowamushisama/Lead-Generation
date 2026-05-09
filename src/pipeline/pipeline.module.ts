@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { OrchestratorService } from './orchestrator.service';
+import { LeadIngestionService } from './lead-ingestion.service';
 import { QUEUE_NAMES } from '../common/constants/queue-names';
 import { DeduplicationService } from '../leads/deduplication.service';
 import { HashUtil } from '../common/utils/hash.util';
@@ -69,6 +70,7 @@ import { OutreachProcessor } from './processors/outreach.processor';
   ],
   providers: [
     OrchestratorService,
+    LeadIngestionService,
     DeduplicationService,
     HashUtil,
     // Stages
@@ -91,6 +93,7 @@ import { OutreachProcessor } from './processors/outreach.processor';
   ],
   exports: [
     OrchestratorService,
+    LeadIngestionService,
     BullModule,
     IntentDetectorStage,
     ICPEnricherStage,

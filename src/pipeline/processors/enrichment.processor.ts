@@ -40,6 +40,7 @@ export class EnrichmentProcessor extends WorkerHost {
     this.logger.log({ message: `Processing enrichment job`, jobId: job.id, leadId });
 
     try {
+      if (!leadId) throw new Error(`Enrichment job ${job.id} is missing leadId`);
       const lead = await this.leadRepository.findUnique({ where: { id: leadId } });
       if (!lead) throw new Error(`Lead ${leadId} not found`);
 

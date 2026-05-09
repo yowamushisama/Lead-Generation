@@ -2,13 +2,15 @@ import { TenantMode } from '../../common/enums/tenant-mode.enum';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { QUEUE_NAMES, JOB_NAMES } from '../../common/constants/queue-names';
+import { Lead } from '@prisma/client';
+import { QUEUE_NAMES } from '../../common/constants/queue-names';
 import { PipelineJobData } from '../orchestrator.service';
 import { IntentDetectorStage } from '../stages/intent-detector.stage';
 import { LeadRepository } from '../../database/repositories/lead.repository';
 import { LeadStatus } from '../../common/enums/lead-status.enum';
 import { OrchestratorService } from '../orchestrator.service';
-import { DeduplicationService } from '../../leads/deduplication.service';
+import { LeadIngestionService } from '../lead-ingestion.service';
+import { RawLeadInput } from '../../common/interfaces/lead-input.interface';
 
 @Processor(QUEUE_NAMES.INTENT)
 export class IntentProcessor extends WorkerHost {
@@ -18,7 +20,7 @@ export class IntentProcessor extends WorkerHost {
     private readonly intentStage: IntentDetectorStage,
     private readonly leadRepository: LeadRepository,
     private readonly orchestrator: OrchestratorService,
-    private readonly deduplicationService: DeduplicationService,
+    private readonly leadIngestion: LeadIngestionService,
   ) {
     super();
   }
@@ -30,27 +32,16 @@ export class IntentProcessor extends WorkerHost {
     this.logger.log({ message: `Processing intent job`, jobId: job.id, leadId });
 
     try {
-      // If no leadId yet, we need to create the lead first
       let resolvedLeadId = leadId;
+      let processingInput = rawInput;
+
       if (!resolvedLeadId && rawInput) {
-        const meta = (rawInput.metadata ?? {}) as Record<string, unknown>;
-
-        // Persist-boundary dedup: skip if already exists (last line of defence after adapter pre-skip + BullMQ jobId dedup)
-        const isDuplicate = await this.deduplicationService.checkDuplicate({
-          name: rawInput.name ?? '',
-          email: rawInput.email,
-          company: rawInput.company,
-          phone: rawInput.phone,
-          address: rawInput.location,
-          source: rawInput.source,
-          organizationId,
-          externalId: rawInput.externalId,
-        });
-
-        if (isDuplicate) {
+        const ingestion = await this.leadIngestion.ingestRawLead(rawInput, context, { campaignId });
+        if (!ingestion.created) {
           this.logger.log({
-            message: 'Duplicate skipped at persist boundary',
+            message: 'Duplicate skipped by intent processor ingestion fallback',
             jobId: job.id,
+            leadId: ingestion.lead.id,
             externalId: rawInput.externalId,
             source: rawInput.source,
             organizationId,
@@ -58,72 +49,38 @@ export class IntentProcessor extends WorkerHost {
           return;
         }
 
-        const contentHash = this.deduplicationService.computeContentHash({
-          name: rawInput.name ?? '',
-          email: rawInput.email,
-          company: rawInput.company,
-          phone: rawInput.phone,
-          address: rawInput.location,
-          source: rawInput.source,
-          organizationId,
-        });
-
-        const lead = await this.leadRepository.create({
-          data: {
-            organizationId,
-            externalId: rawInput.externalId,
-            source: rawInput.source,
-            sourceUrl: rawInput.sourceUrl,
-            sourceType: rawInput.sourceType ?? 'intent',
-            name: rawInput.name,
-            headline: rawInput.headline,
-            bio: rawInput.bio,
-            role: rawInput.role,
-            company: rawInput.company,
-            companySize: rawInput.companySize,
-            industry: rawInput.industry,
-            location: rawInput.location,
-            email: rawInput.email,
-            phone: rawInput.phone,
-            website: rawInput.website,
-            originalContent: rawInput.originalContent,
-            contentHash,
-            // Persist Google Maps discovery fields to their dedicated columns
-            ...(rawInput.sourceType === 'discovery' && {
-              placeId: meta.placeId as string | undefined,
-              rating: meta.rating as number | undefined,
-              reviewCount: meta.reviewCount as number | undefined,
-              googleTypes: (meta.googleTypes as string[] | undefined) ?? undefined,
-              businessHours: (meta.businessHours as object | undefined) ?? undefined,
-              lastReviewAt: meta.lastReviewAt ? new Date(meta.lastReviewAt as string) : undefined,
-              socialHandles: (meta.socialHandlesFromGmaps as object | undefined) ?? undefined,
-            }),
-            campaignId,
-            status: LeadStatus.NEW,
-            tier: 'COLD',
-            score: 0,
-            dataExpiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-          },
-        });
-        resolvedLeadId = lead.id;
+        resolvedLeadId = ingestion.lead.id;
       }
 
-      // Discovery leads carry no post content for intent classification — skip
-      // intent classification but still run enrichment (website audit) before scoring.
-      if (rawInput?.sourceType === 'discovery') {
+      if (!resolvedLeadId) {
+        throw new Error('Intent job requires either leadId or rawInput');
+      }
+
+      if (!processingInput) {
+        const lead = await this.leadRepository.findFirst({
+          where: { id: resolvedLeadId, organizationId },
+        });
+        if (!lead) {
+          throw new Error(`Lead ${resolvedLeadId} not found for organization ${organizationId}`);
+        }
+        processingInput = this.toRawInput(lead);
+      }
+
+      // Discovery leads carry no post content for intent classification; skip
+      // intent classification but still run enrichment before scoring.
+      if (processingInput.sourceType === 'discovery') {
         await this.orchestrator.enqueueForStage(resolvedLeadId, 'enrich', context, { campaignId });
         return;
       }
 
-      const content = rawInput?.originalContent ?? '';
-      const platform = rawInput?.source ?? 'unknown';
+      const content = processingInput.originalContent ?? '';
+      const platform = processingInput.source ?? 'unknown';
 
       const output = await this.intentStage.process(
         { leadId: resolvedLeadId, originalContent: content, platform },
         context,
       );
 
-      // Persist intent results
       await this.leadRepository.update({
         where: { id: resolvedLeadId },
         data: {
@@ -136,7 +93,6 @@ export class IntentProcessor extends WorkerHost {
         },
       });
 
-      // Enqueue next stage if confidence meets threshold
       if (output.intent.intentConfidence >= 0.5) {
         await this.orchestrator.enqueueForStage(resolvedLeadId, 'enrich', context, { campaignId });
       } else {
@@ -150,5 +106,26 @@ export class IntentProcessor extends WorkerHost {
       this.logger.error({ message: `Intent processor error`, jobId: job.id, error: String(error) });
       throw error;
     }
+  }
+
+  private toRawInput(lead: Lead): RawLeadInput {
+    return {
+      externalId: lead.externalId ?? undefined,
+      source: lead.source,
+      sourceUrl: lead.sourceUrl ?? undefined,
+      sourceType: lead.sourceType,
+      name: lead.name,
+      headline: lead.headline ?? undefined,
+      bio: lead.bio ?? undefined,
+      role: lead.role ?? undefined,
+      company: lead.company ?? undefined,
+      companySize: lead.companySize ?? undefined,
+      industry: lead.industry ?? undefined,
+      location: lead.location ?? undefined,
+      email: lead.email ?? undefined,
+      phone: lead.phone ?? undefined,
+      website: lead.website ?? undefined,
+      originalContent: lead.originalContent ?? undefined,
+    };
   }
 }

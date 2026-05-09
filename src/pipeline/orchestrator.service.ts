@@ -5,9 +5,10 @@ import { Queue } from 'bullmq';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { RawLeadInput } from '../common/interfaces/lead-input.interface';
 import { QUEUE_NAMES, JOB_NAMES } from '../common/constants/queue-names';
+import { PIPELINE_JOB_OPTIONS } from './pipeline-job-options';
 
 export interface PipelineJobData {
-  leadId: string;
+  leadId?: string;
   organizationId: string;
   userId: string;
   campaignId?: string;
@@ -42,7 +43,6 @@ export class OrchestratorService {
     options: PipelineOptions = {},
   ): Promise<string> {
     const jobData: PipelineJobData = {
-      leadId: '',
       organizationId: context.organizationId,
       userId: context.userId,
       campaignId: options.campaignId,
@@ -52,6 +52,7 @@ export class OrchestratorService {
 
     const startFrom = options.startFrom ?? 'intent';
     const queue = this.getQueueForStage(startFrom);
+    const jobName = this.getJobNameForStage(startFrom);
 
     const jobId =
       options.dedupKey && rawInput.externalId
@@ -61,16 +62,10 @@ export class OrchestratorService {
             .slice(0, 40)
         : undefined;
 
-    const job = await queue.add(JOB_NAMES.CLASSIFY_INTENT, jobData, {
+    const job = await queue.add(jobName, jobData, {
+      ...PIPELINE_JOB_OPTIONS,
       jobId,
       priority: options.priority ?? 0,
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 5000,
-      },
-      removeOnComplete: { count: 100 },
-      removeOnFail: { count: 50 },
     });
 
     this.logger.log({
@@ -78,6 +73,43 @@ export class OrchestratorService {
       module: 'OrchestratorService',
       correlationId: job.id,
       organizationId: context.organizationId,
+      jobId: job.id,
+      startFrom,
+    });
+
+    return job.id ?? '';
+  }
+
+  async enqueuePersistedLead(
+    leadId: string,
+    rawInput: RawLeadInput | undefined,
+    context: TenantContext,
+    options: PipelineOptions = {},
+  ): Promise<string> {
+    const jobData: PipelineJobData = {
+      leadId,
+      organizationId: context.organizationId,
+      userId: context.userId,
+      campaignId: options.campaignId,
+      rawInput,
+      priority: options.priority ?? 0,
+    };
+
+    const startFrom = options.startFrom ?? 'intent';
+    const queue = this.getQueueForStage(startFrom);
+    const jobName = this.getJobNameForStage(startFrom);
+
+    const job = await queue.add(jobName, jobData, {
+      ...PIPELINE_JOB_OPTIONS,
+      priority: options.priority ?? 0,
+    });
+
+    this.logger.log({
+      message: `Persisted lead enqueued to ${startFrom} pipeline`,
+      module: 'OrchestratorService',
+      correlationId: job.id,
+      organizationId: context.organizationId,
+      leadId,
       jobId: job.id,
       startFrom,
     });
@@ -124,12 +156,8 @@ export class OrchestratorService {
     const jobName = this.getJobNameForStage(stage);
 
     const job = await queue.add(jobName, jobData, {
+      ...PIPELINE_JOB_OPTIONS,
       priority: options.priority ?? 0,
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 5000,
-      },
     });
 
     this.logger.log({

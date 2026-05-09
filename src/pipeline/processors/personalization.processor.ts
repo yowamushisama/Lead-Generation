@@ -30,6 +30,7 @@ export class PersonalizationProcessor extends WorkerHost {
     this.logger.log({ message: `Processing personalization job`, jobId: job.id, leadId });
 
     try {
+      if (!leadId) throw new Error(`Personalization job ${job.id} is missing leadId`);
       const [lead, org] = await Promise.all([
         this.leadRepository.findUnique({ where: { id: leadId } }),
         this.organizationRepository.findUnique({ where: { id: organizationId } }),
