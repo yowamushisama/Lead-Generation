@@ -46,6 +46,12 @@ export function CampaignDetail({ id }: { id: string }) {
   const archiveMutation = useMutation({ mutationFn: () => campaignsApi.archive(id), onSuccess: invalidate });
   const runMutation = useMutation({
     mutationFn: () => campaignsApi.run(id),
+    onMutate: () => {
+      setRunResult(null);
+      setRunError(null);
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['campaign-performance', id] });
+    },
     onSuccess: (summary) => {
       setRunResult(summary);
       setRunError(null);

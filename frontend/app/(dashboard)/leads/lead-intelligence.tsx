@@ -19,6 +19,7 @@ import { ColumnPicker } from './lead-table';
 import { useColumnVisibility } from './use-column-visibility';
 
 const PAGE_SIZE = 50;
+const CAMPAIGN_REFRESH_MS = 20_000;
 
 export function LeadIntelligence({
   campaignId,
@@ -66,6 +67,8 @@ export function LeadIntelligence({
         page,
       }),
     placeholderData: (prev) => prev,
+    refetchInterval: campaignId ? CAMPAIGN_REFRESH_MS : false,
+    refetchIntervalInBackground: true,
   });
 
   const updateMutation = useMutation({

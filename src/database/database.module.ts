@@ -15,6 +15,8 @@ import { UserRepository } from './repositories/user.repository';
 import { LinkedInRunRepository } from './repositories/linkedin-run.repository';
 import { ReportArtifactRepository } from './repositories/report-artifact.repository';
 import { CampaignScrapeCursorRepository } from './repositories/campaign-scrape-cursor.repository';
+import { CampaignRunLogRepository } from './repositories/campaign-run-log.repository';
+import { GmapsScrapeRunLogRepository } from './repositories/gmaps-scrape-run-log.repository';
 
 @Global()
 @Module({
@@ -35,6 +37,8 @@ import { CampaignScrapeCursorRepository } from './repositories/campaign-scrape-c
     LinkedInRunRepository,
     ReportArtifactRepository,
     CampaignScrapeCursorRepository,
+    CampaignRunLogRepository,
+    GmapsScrapeRunLogRepository,
   ],
   exports: [
     PrismaService,
@@ -53,6 +57,8 @@ import { CampaignScrapeCursorRepository } from './repositories/campaign-scrape-c
     LinkedInRunRepository,
     ReportArtifactRepository,
     CampaignScrapeCursorRepository,
+    CampaignRunLogRepository,
+    GmapsScrapeRunLogRepository,
   ],
 })
 export class DatabaseModule {}

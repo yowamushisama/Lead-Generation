@@ -32,6 +32,8 @@ model Organization {
   analyticsEvents AnalyticsEvent[]
   usageRecords    UsageRecord[]
   reportArtifacts ReportArtifact[]
+  campaignRunLogs    CampaignRunLog[]
+  gmapsScrapeRunLogs GmapsScrapeRunLog[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -203,7 +205,9 @@ model Campaign {
   leads           Lead[]
   messages        Message[]
   reportArtifacts ReportArtifact[]
-  scrapeCursors   CampaignScrapeCursor[]
+  scrapeCursors      CampaignScrapeCursor[]
+  campaignRunLogs    CampaignRunLog[]
+  gmapsScrapeRunLogs GmapsScrapeRunLog[]
   maxLeadsPerRun  Int?
   isActive        Boolean   @default(true)
   status          String    @default("ACTIVE")
@@ -226,6 +230,9 @@ model CampaignScrapeCursor {
   consecutiveZeroRuns  Int       @default(0)
   lastNewLeadAt        DateTime?
   exhausted            Boolean   @default(false)
+  seenExternalIds      String[]  @default([])
+  lastScrollDepth      Int       @default(0)
+  duplicateWallHits    Int       @default(0)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   @@unique([campaignId, source, queryKey])
@@ -372,4 +379,63 @@ model LinkedInRun {
   errors           Json
   createdAt        DateTime  @default(now())
   @@index([organizationId, startedAt])
+}
+
+model CampaignRunLog {
+  id                    String   @id @default(cuid())
+  runId                 String   @unique
+  campaignId            String
+  organizationId        String
+  trigger               String
+  startedAt             DateTime @default(now())
+  completedAt           DateTime?
+  durationMs            Int?
+  status                String   @default("RUNNING")
+  goalMaxLeads          Int
+  reachedGoal           Boolean  @default(false)
+  endReason             String?
+  adaptersAttempted     String[] @default([])
+  adaptersUsed          String[] @default([])
+  adaptersSkipped       Json     @default("[]")
+  candidatesYielded     Int      @default(0)
+  duplicatesAtAdapter   Int      @default(0)
+  duplicatesAtIngestion Int      @default(0)
+  newLeadsSaved         Int      @default(0)
+  enqueuedToPipeline    Int      @default(0)
+  errors                Int      @default(0)
+  errorSummary          Json?
+  metadata              Json?
+  campaign              Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, startedAt])
+  @@index([campaignId, startedAt])
+  @@index([status])
+}
+
+model GmapsScrapeRunLog {
+  id                     String   @id @default(cuid())
+  runId                  String
+  campaignId             String
+  organizationId         String
+  queryKey               String
+  searchTerm             String
+  startedAt              DateTime @default(now())
+  completedAt            DateTime?
+  durationMs             Int?
+  scrollAttempts         Int      @default(0)
+  candidateUrlsCollected Int      @default(0)
+  cursorCacheHits        Int      @default(0)
+  dbBatchDuplicates      Int      @default(0)
+  extractionFailures     Int      @default(0)
+  candidatesExtracted    Int      @default(0)
+  ingestionDuplicates    Int      @default(0)
+  newLeadsSaved          Int      @default(0)
+  endReason              String?  @default("RUNNING")
+  errorSummary           String?
+  metadata               Json?
+  campaign               Campaign?     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  organization           Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, startedAt])
+  @@index([campaignId, queryKey])
+  @@index([runId])
 }

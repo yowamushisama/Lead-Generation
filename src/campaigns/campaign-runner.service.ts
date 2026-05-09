@@ -11,20 +11,36 @@ import { OrchestratorService } from '../pipeline/orchestrator.service';
 import { LeadIngestionService } from '../pipeline/lead-ingestion.service';
 import { RedisService } from '../database/redis.service';
 import { ICPConfig } from '../common/types/icp.types';
+import { CampaignRunLogRepository } from '../database/repositories/campaign-run-log.repository';
+import { GmapsScrapeRunLogRepository } from '../database/repositories/gmaps-scrape-run-log.repository';
+import { GmapsRunStatsCollectorImpl } from '../adapters/google-maps/gmaps-run-stats.collector';
+import { CancellationSignal } from '../adapters/google-maps/gmaps-adapter.config';
 
 export type CampaignRunTrigger = 'activation' | 'scheduled' | 'manual';
 
 export interface CampaignRunSummary {
+  runId: string;
   campaignId: string;
   trigger: CampaignRunTrigger;
+  goalMaxLeads: number;
+  reachedGoal: boolean;
+  endReason: string;
   adaptersAttempted: string[];
   adaptersUsed: string[];
   skippedAdapters: Array<{ adapter: string; reason: string }>;
   saved: number;
   duplicates: number;
+  duplicatesAtIngestion: number;
+  duplicatesAtAdapter: number;
+  candidatesYielded: number;
   enqueued: number;
   errors: number;
 }
+
+/** Campaign-wide saved-lead goal safety multiplier: max candidates = goal × this. */
+const SAFETY_MULTIPLIER = 5;
+const MAX_RUN_DURATION_MS = 4 * 60 * 60_000; // 4 hours — each query can now take up to 43 min
+const MAX_RUN_ERRORS = 25;
 
 @Injectable()
 export class CampaignRunnerService {
@@ -44,6 +60,8 @@ export class CampaignRunnerService {
     private readonly configService: ConfigService,
     private readonly appConfig: AppConfigService,
     private readonly redis: RedisService,
+    private readonly campaignRunLogRepo: CampaignRunLogRepository,
+    private readonly gmapsScrapeRunLogRepo: GmapsScrapeRunLogRepository,
   ) {}
 
   async runOnActivationIfEnabled(tenant: TenantContext, campaignId: string): Promise<void> {
@@ -72,25 +90,10 @@ export class CampaignRunnerService {
     campaignId: string,
     trigger: CampaignRunTrigger,
   ): Promise<CampaignRunSummary> {
-    const lockKey = `campaign:run:lock:${campaignId}`;
-    const lockToken = randomUUID();
-    const acquired = await this.redis.setnx(lockKey, lockToken, CampaignRunnerService.RUN_LOCK_TTL_SECONDS);
-    if (!acquired) {
-      throw new ConflictException(`Campaign ${campaignId} is already running. Try again once the current run finishes.`);
-    }
+    const runId = randomUUID();
 
-    try {
-      return await this.runCampaignLocked(tenant, campaignId, trigger);
-    } finally {
-      await this.redis.delIfOwner(lockKey, lockToken).catch(() => undefined);
-    }
-  }
-
-  private async runCampaignLocked(
-    tenant: TenantContext,
-    campaignId: string,
-    trigger: CampaignRunTrigger,
-  ): Promise<CampaignRunSummary> {
+    // Load campaign before acquiring the lock so 404 stays clean even when locked,
+    // and so LOCKED_OUT log rows include the correct goalMaxLeads.
     const campaign = await this.campaignRepository.findFirst({
       where: { id: campaignId, organizationId: tenant.organizationId },
       select: {
@@ -101,6 +104,7 @@ export class CampaignRunnerService {
         targetLocations: true,
         targetIndustries: true,
         settings: true,
+        maxLeadsPerRun: true,
         icpProfile: {
           select: {
             config: true,
@@ -119,206 +123,296 @@ export class CampaignRunnerService {
       throw new Error(`Campaign ${campaignId} is not active`);
     }
 
+    const goalMaxLeads = this.resolveGoal(campaign);
+
+    const lockKey = `campaign:run:lock:${campaignId}`;
+    const lockToken = randomUUID();
+    const acquired = await this.redis.setnx(lockKey, lockToken, CampaignRunnerService.RUN_LOCK_TTL_SECONDS);
+    if (!acquired) {
+      await this.campaignRunLogRepo.markLockedOut({
+        runId,
+        campaignId,
+        organizationId: tenant.organizationId,
+        trigger,
+        goalMaxLeads,
+      }).catch(() => {});
+      throw new ConflictException({
+        message: `Campaign ${campaignId} is already running. Try again once the current run finishes.`,
+        runId,
+      });
+    }
+
+    try {
+      return await this.runCampaignLocked(runId, tenant, campaign, goalMaxLeads, trigger);
+    } finally {
+      await this.redis.delIfOwner(lockKey, lockToken).catch(() => undefined);
+    }
+  }
+
+  private async runCampaignLocked(
+    runId: string,
+    tenant: TenantContext,
+    campaign: Record<string, unknown>,
+    goalMaxLeads: number,
+    trigger: CampaignRunTrigger,
+  ): Promise<CampaignRunSummary> {
+    const campaignId = campaign.id as string;
+    const { organizationId } = tenant;
+    const startedAt = Date.now();
+
+    const maxCandidatesPerRun = goalMaxLeads > 0 ? goalMaxLeads * SAFETY_MULTIPLIER : 0;
+    const maxRunDurationMs = this.readIntEnv('CAMPAIGN_RUN_MAX_DURATION_MS') ?? MAX_RUN_DURATION_MS;
+    const maxRunErrors = this.readIntEnv('CAMPAIGN_RUN_MAX_ERRORS') ?? MAX_RUN_ERRORS;
+
     const settings = (campaign.settings as Record<string, unknown> | null) ?? {};
     const targetSources = this.readStringArray(settings['targetSources']);
     const requestedSources = this.resolveRequestedSources(targetSources);
-    const maxResults = this.readIntEnv('CAMPAIGN_RUN_MAX_RESULTS_PER_ADAPTER');
     const keywords = ((campaign.keywords as string[] | null) ?? []).filter(Boolean);
     const campaignLocations = ((campaign.targetLocations as string[] | null) ?? []).filter(Boolean);
     const campaignIndustries = ((campaign.targetIndustries as string[] | null) ?? []).filter(Boolean);
-    const icpConfig = (campaign.icpProfile?.config as ICPConfig | null) ?? {} as ICPConfig;
+    const icpConfig = ((campaign as any).icpProfile?.config as ICPConfig | null) ?? {} as ICPConfig;
     const icpLocations = (
-      ((campaign.icpProfile?.targetLocations as string[] | null) ?? []).filter(Boolean).length > 0
-        ? (campaign.icpProfile?.targetLocations as string[])
+      (((campaign as any).icpProfile?.targetLocations as string[] | null) ?? []).filter(Boolean).length > 0
+        ? ((campaign as any).icpProfile?.targetLocations as string[])
         : (icpConfig.targetLocations ?? [])
     ).filter(Boolean);
     const icpIndustries = (
-      ((campaign.icpProfile?.targetIndustries as string[] | null) ?? []).filter(Boolean).length > 0
-        ? (campaign.icpProfile?.targetIndustries as string[])
+      (((campaign as any).icpProfile?.targetIndustries as string[] | null) ?? []).filter(Boolean).length > 0
+        ? ((campaign as any).icpProfile?.targetIndustries as string[])
         : (icpConfig.targetIndustries ?? [])
     ).filter(Boolean);
     const locations = campaignLocations.length > 0 ? campaignLocations : icpLocations;
     const industries = campaignIndustries.length > 0 ? campaignIndustries : icpIndustries;
 
     const summary: CampaignRunSummary = {
+      runId,
       campaignId,
       trigger,
+      goalMaxLeads,
+      reachedGoal: false,
+      endReason: 'ADAPTERS_EXHAUSTED',
       adaptersAttempted: requestedSources,
       adaptersUsed: [],
       skippedAdapters: [],
       saved: 0,
       duplicates: 0,
+      duplicatesAtIngestion: 0,
+      duplicatesAtAdapter: 0,
+      candidatesYielded: 0,
       enqueued: 0,
       errors: 0,
     };
 
+    await this.campaignRunLogRepo.start({
+      runId,
+      campaignId,
+      organizationId,
+      trigger,
+      goalMaxLeads,
+      adaptersAttempted: requestedSources,
+    }).catch(() => {});
+
     this.logger.log({
       message: 'Campaign run started',
+      runId,
       campaignId,
       trigger,
-      organizationId: tenant.organizationId,
-      mode: tenant.mode ?? this.appConfig.tenantMode,
+      organizationId,
+      goalMaxLeads,
+      maxCandidatesPerRun: maxCandidatesPerRun || 'unlimited',
       requestedSources,
-      maxResultsPerAdapter: maxResults ?? 'default',
       keywordsCount: keywords.length,
       locationsCount: locations.length,
       industriesCount: industries.length,
-      locationsSource: campaignLocations.length > 0 ? 'campaign' : (icpLocations.length > 0 ? 'icp' : 'none'),
-      industriesSource: campaignIndustries.length > 0 ? 'campaign' : (icpIndustries.length > 0 ? 'icp' : 'none'),
     });
 
-    for (const source of requestedSources) {
-      if (!this.adapterRegistry.has(source)) {
-        summary.skippedAdapters.push({ adapter: source, reason: 'not_registered' });
-        this.logger.warn({
-          message: 'Skipping campaign adapter that is not registered',
-          campaignId,
-          organizationId: tenant.organizationId,
-          adapter: source,
-        });
-        continue;
-      }
+    try {
+      const statsCollector = new GmapsRunStatsCollectorImpl(runId, this.gmapsScrapeRunLogRepo);
+      const cancellationSignal: CancellationSignal = { reason: null };
 
-      const adapter = this.adapterRegistry.get(source);
-
-      if (this.autonomousUnsupportedSources.has(adapter.name)) {
-        summary.skippedAdapters.push({ adapter: adapter.name, reason: 'manual_input_required' });
-        this.logger.warn({
-          message: 'Skipping adapter during autonomous campaign run',
-          campaignId,
-          organizationId: tenant.organizationId,
-          adapter: adapter.name,
-          reason: 'manual_input_required',
-        });
-        continue;
-      }
-
-      const healthy = await adapter.isHealthy().catch(() => false);
-      if (!healthy) {
-        summary.skippedAdapters.push({ adapter: adapter.name, reason: 'unhealthy' });
-        this.logger.warn({
-          message: 'Skipping unhealthy adapter during campaign run',
-          campaignId,
-          organizationId: tenant.organizationId,
-          adapter: adapter.name,
-        });
-        continue;
-      }
-
-      if (adapter.sourceType === 'intent' && keywords.length === 0) {
-        summary.skippedAdapters.push({ adapter: adapter.name, reason: 'missing_keywords' });
-        this.logger.warn({
-          message: 'Skipping intent adapter for campaign without keywords',
-          campaignId,
-          organizationId: tenant.organizationId,
-          adapter: adapter.name,
-        });
-        continue;
-      }
-
-      if (adapter.sourceType === 'discovery' && (locations.length === 0 || industries.length === 0)) {
-        summary.skippedAdapters.push({ adapter: adapter.name, reason: 'missing_locations_or_industries' });
-        this.logger.warn({
-          message: 'Skipping discovery adapter for campaign without locations or industries',
-          campaignId,
-          organizationId: tenant.organizationId,
-          adapter: adapter.name,
-        });
-        continue;
-      }
-
-      summary.adaptersUsed.push(adapter.name);
-
-      const config = {
-        organizationId: tenant.organizationId,
-        campaignId,
-        keywords,
-        locations,
-        industries,
-        ignoreExhausted: trigger === 'manual',
-        ...(maxResults ? { maxResults } : {}),
-      };
-
-      // Phase 1: persist all scraped leads before enqueuing any for processing.
       const toEnqueue: Array<{ leadId: string; rawInput: RawLeadInput }> = [];
-      for await (const lead of adapter.collect(config)) {
-        try {
-          const ingestion = await this.leadIngestion.ingestRawLead(lead, tenant, { campaignId });
 
-          if (!ingestion.created) {
-            summary.duplicates++;
-            continue;
+      adapterLoop:
+      for (const source of requestedSources) {
+        if (!this.adapterRegistry.has(source)) {
+          summary.skippedAdapters.push({ adapter: source, reason: 'not_registered' });
+          continue;
+        }
+
+        const adapter = this.adapterRegistry.get(source);
+
+        if (this.autonomousUnsupportedSources.has(adapter.name)) {
+          summary.skippedAdapters.push({ adapter: adapter.name, reason: 'manual_input_required' });
+          continue;
+        }
+
+        const healthy = await adapter.isHealthy().catch(() => false);
+        if (!healthy) {
+          summary.skippedAdapters.push({ adapter: adapter.name, reason: 'unhealthy' });
+          continue;
+        }
+
+        if (adapter.sourceType === 'intent' && keywords.length === 0) {
+          summary.skippedAdapters.push({ adapter: adapter.name, reason: 'missing_keywords' });
+          continue;
+        }
+
+        if (adapter.sourceType === 'discovery' && (locations.length === 0 || industries.length === 0)) {
+          summary.skippedAdapters.push({ adapter: adapter.name, reason: 'missing_locations_or_industries' });
+          continue;
+        }
+
+        summary.adaptersUsed.push(adapter.name);
+
+        const isGmaps = adapter.name === LeadSource.GOOGLE_MAPS;
+
+        const adapterConfig: Record<string, unknown> = {
+          organizationId,
+          campaignId,
+          keywords,
+          locations,
+          industries,
+          ignoreExhausted: trigger === 'manual',
+          ...(isGmaps ? { statsCollector, cancellationSignal } : {}),
+        };
+
+        // Phase 1: persist all scraped leads before enqueuing any.
+        for await (const lead of adapter.collect(adapterConfig as any)) {
+          summary.candidatesYielded++;
+          try {
+            const ingestion = await this.leadIngestion.ingestRawLead(lead, tenant, { campaignId });
+
+            if (!ingestion.created) {
+              summary.duplicates++;
+              summary.duplicatesAtIngestion++;
+
+              if (isGmaps && (lead.metadata as any)?.gmapsLogId) {
+                await this.gmapsScrapeRunLogRepo
+                  .incrementIngestion((lead.metadata as any).gmapsLogId, { ingestionDuplicates: 1 })
+                  .catch(() => {});
+              }
+            } else {
+              summary.saved++;
+              toEnqueue.push({ leadId: ingestion.lead.id, rawInput: lead });
+
+              if (isGmaps && (lead.metadata as any)?.gmapsLogId) {
+                await this.gmapsScrapeRunLogRepo
+                  .incrementIngestion((lead.metadata as any).gmapsLogId, { newLeadsSaved: 1 })
+                  .catch(() => {});
+              }
+            }
+          } catch (error) {
+            summary.errors++;
+            this.logger.error({
+              message: 'Campaign lead persist failed',
+              campaignId,
+              organizationId,
+              adapter: adapter.name,
+              trigger,
+              leadName: lead.name,
+              sourceUrl: lead.sourceUrl,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
 
-          summary.saved++;
-          toEnqueue.push({ leadId: ingestion.lead.id, rawInput: lead });
-        } catch (error) {
-          summary.errors++;
-          this.logger.error({
-            message: 'Campaign lead persist failed',
-            campaignId,
-            organizationId: tenant.organizationId,
-            adapter: adapter.name,
-            trigger,
-            leadName: lead.name,
-            sourceUrl: lead.sourceUrl,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          // Safety checks happen AFTER processing the current candidate so the
+          // reconciliation invariant (candidatesYielded = duplicates + saved + errors) always holds.
+          if (goalMaxLeads > 0 && summary.saved >= goalMaxLeads) {
+            cancellationSignal.reason = 'RUN_GOAL_REACHED';
+            summary.reachedGoal = true;
+            summary.endReason = 'GOAL_REACHED';
+            break adapterLoop;
+          }
+          if (maxCandidatesPerRun > 0 && summary.candidatesYielded >= maxCandidatesPerRun) {
+            cancellationSignal.reason = 'RUN_SAFETY_LIMIT';
+            summary.endReason = 'SAFETY_LIMIT';
+            break adapterLoop;
+          }
+          if (Date.now() - startedAt > maxRunDurationMs) {
+            cancellationSignal.reason = 'RUN_SAFETY_LIMIT';
+            summary.endReason = 'SAFETY_LIMIT';
+            break adapterLoop;
+          }
+          if (summary.errors >= maxRunErrors) {
+            cancellationSignal.reason = 'RUN_SAFETY_LIMIT';
+            summary.endReason = 'SAFETY_LIMIT';
+            break adapterLoop;
+          }
+        }
+
+        if (summary.reachedGoal || summary.endReason === 'SAFETY_LIMIT') {
+          break;
         }
       }
 
+      summary.duplicatesAtAdapter = statsCollector.getTotalDuplicatesAtAdapter();
+
       this.logger.log({
         message: 'Campaign scrape complete — starting pipeline enqueue',
+        runId,
         campaignId,
-        organizationId: tenant.organizationId,
-        adapter: adapter.name,
+        organizationId,
         saved: summary.saved,
-        duplicates: summary.duplicates,
+        duplicatesAtIngestion: summary.duplicatesAtIngestion,
+        duplicatesAtAdapter: summary.duplicatesAtAdapter,
+        candidatesYielded: summary.candidatesYielded,
+        reachedGoal: summary.reachedGoal,
+        endReason: summary.endReason,
       });
 
       // Phase 2: enqueue all newly saved leads for pipeline processing.
       for (const { leadId, rawInput } of toEnqueue) {
         try {
-          const jobId = await this.orchestrator.enqueuePersistedLead(leadId, rawInput, tenant, { campaignId });
+          await this.orchestrator.enqueuePersistedLead(leadId, rawInput, tenant, { campaignId });
           summary.enqueued++;
-
-          if (this.isEnabled('CAMPAIGN_RUN_DEBUG')) {
-            this.logger.log({
-              message: 'Campaign lead enqueued',
-              campaignId,
-              organizationId: tenant.organizationId,
-              adapter: adapter.name,
-              trigger,
-              leadId,
-              jobId,
-              leadName: rawInput.name,
-              sourceUrl: rawInput.sourceUrl,
-            });
-          }
         } catch (error) {
           summary.errors++;
           this.logger.error({
             message: 'Campaign lead enqueue failed',
             campaignId,
-            organizationId: tenant.organizationId,
-            adapter: adapter.name,
+            organizationId,
             trigger,
             leadId,
             error: error instanceof Error ? error.message : String(error),
           });
         }
       }
+
+      await this.campaignRunLogRepo.finish(runId, {
+        completedAt: new Date(),
+        durationMs: Date.now() - startedAt,
+        status: 'COMPLETED',
+        reachedGoal: summary.reachedGoal,
+        endReason: summary.endReason,
+        adaptersUsed: summary.adaptersUsed,
+        adaptersSkipped: summary.skippedAdapters,
+        candidatesYielded: summary.candidatesYielded,
+        duplicatesAtAdapter: summary.duplicatesAtAdapter,
+        duplicatesAtIngestion: summary.duplicatesAtIngestion,
+        newLeadsSaved: summary.saved,
+        enqueuedToPipeline: summary.enqueued,
+        errors: summary.errors,
+      }).catch(() => {});
+
+    } catch (err: unknown) {
+      await this.campaignRunLogRepo.markFailed(runId, err).catch(() => {});
+      throw err;
     }
 
     this.logger.log({
       message: 'Campaign run completed',
+      runId,
       campaignId,
       trigger,
-      organizationId: tenant.organizationId,
+      organizationId,
       saved: summary.saved,
-      duplicates: summary.duplicates,
+      duplicatesAtIngestion: summary.duplicatesAtIngestion,
+      duplicatesAtAdapter: summary.duplicatesAtAdapter,
+      candidatesYielded: summary.candidatesYielded,
       enqueued: summary.enqueued,
       errors: summary.errors,
+      reachedGoal: summary.reachedGoal,
+      endReason: summary.endReason,
       adaptersUsed: summary.adaptersUsed,
       skippedAdapters: summary.skippedAdapters,
     });
@@ -334,10 +428,26 @@ export class CampaignRunnerService {
     };
   }
 
+  private resolveGoal(campaign: Record<string, unknown>): number {
+    const campaignCap = campaign.maxLeadsPerRun as number | null | undefined;
+    if (campaignCap && campaignCap > 0) return campaignCap;
+
+    const newEnv = this.readIntEnv('CAMPAIGN_RUN_GOAL_MAX_LEADS');
+    if (newEnv) return newEnv;
+
+    const legacyEnv = this.readIntEnv('CAMPAIGN_RUN_MAX_RESULTS_PER_ADAPTER');
+    if (legacyEnv) {
+      this.logger.warn(
+        'CAMPAIGN_RUN_MAX_RESULTS_PER_ADAPTER is deprecated. Rename to CAMPAIGN_RUN_GOAL_MAX_LEADS. ' +
+        'This env var now sets a campaign-wide saved-lead goal, not a per-adapter candidate cap.',
+      );
+      return legacyEnv;
+    }
+
+    return 100; // default
+  }
+
   private resolveRequestedSources(targetSources: string[]): string[] {
-    // Campaign-level targetSources always takes priority over the global env override.
-    // CAMPAIGN_RUN_SOURCES is only a fallback used when no campaign sources are configured,
-    // e.g. for debugging a specific adapter system-wide.
     const sources =
       targetSources.length > 0
         ? targetSources
@@ -356,7 +466,6 @@ export class CampaignRunnerService {
   private readCsvEnv(key: string): string[] {
     const value = this.configService.get<string>(key);
     if (!value) return [];
-
     return value
       .split(',')
       .map((item) => item.trim())
@@ -371,7 +480,6 @@ export class CampaignRunnerService {
   private readIntEnv(key: string): number | undefined {
     const value = this.configService.get<string>(key);
     if (!value) return undefined;
-
     const parsed = parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }

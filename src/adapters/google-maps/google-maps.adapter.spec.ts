@@ -7,6 +7,10 @@ import type { GmapsPlace } from './gmaps-extraction.types';
 import { LeadRepository } from '../../database/repositories/lead.repository';
 import { CampaignScrapeCursorRepository } from '../../database/repositories/campaign-scrape-cursor.repository';
 
+// URLs that include the !19sChIJ... pattern so placeIdFromUrl can extract a real placeId
+const TEST_URL_1 = 'https://www.google.com/maps/place/Acme+Plumbing/data=!19sChIJtest1234';
+const TEST_URL_2 = 'https://www.google.com/maps/place/Best+Pipes/data=!19sChIJtest5678';
+
 const mockPlace = (overrides: Partial<GmapsPlace> = {}): GmapsPlace => ({
   placeId: 'ChIJtest1234',
   name: 'Acme Plumbing',
@@ -24,11 +28,29 @@ const mockPlace = (overrides: Partial<GmapsPlace> = {}): GmapsPlace => ({
   ...overrides,
 });
 
+/** Build a scrollUntilStable mock that fires onBatch once with the given URLs then returns END_OF_FEED. */
+function makeScrollMock(urls = [TEST_URL_1, TEST_URL_2]) {
+  return jest.fn().mockImplementation(
+    async (
+      _page: unknown,
+      opts: {
+        onBatch: (u: string[]) => Promise<{ stop: boolean; reason?: string }>;
+        onScrollStep?: () => void;
+      },
+    ) => {
+      opts.onScrollStep?.();
+      await opts.onBatch(urls);
+      return 'END_OF_FEED';
+    },
+  );
+}
+
 describe('GoogleMapsAdapter', () => {
   let adapter: GoogleMapsAdapter;
   let searchService: jest.Mocked<GmapsSearchService>;
   let extractionService: jest.Mocked<GmapsExtractionService>;
-  let cursorRepository: jest.Mocked<Pick<CampaignScrapeCursorRepository, 'findOne' | 'upsert'>>;
+  let leadRepository: jest.Mocked<Pick<LeadRepository, 'findMany'>>;
+  let cursorRepository: jest.Mocked<Pick<CampaignScrapeCursorRepository, 'findOne' | 'upsert' | 'appendSeen'>>;
 
   beforeEach(async () => {
     const mockPage = {
@@ -40,38 +62,37 @@ describe('GoogleMapsAdapter', () => {
       newPage: jest.fn().mockResolvedValue(mockPage),
       buildSearchUrl: jest.fn().mockReturnValue('https://www.google.com/maps/search/plumber+in+Austin'),
       navigateToSearch: jest.fn().mockResolvedValue(undefined),
-      scrollFeed: jest.fn().mockResolvedValue(undefined),
-      collectListingUrls: jest.fn().mockResolvedValue([
-        'https://www.google.com/maps/place/Acme+Plumbing/data=test1',
-        'https://www.google.com/maps/place/Best+Pipes/data=test2',
-      ]),
+      scrollUntilStable: makeScrollMock(),
       safeUrl: jest.fn().mockReturnValue('https://www.google.com/maps/search/...'),
     } as unknown as jest.Mocked<GmapsSearchService>;
 
     extractionService = {
       extractFromUrl: jest.fn()
         .mockResolvedValueOnce(mockPlace())
-        .mockResolvedValueOnce(mockPlace({
-          placeId: 'ChIJtest5678',
-          name: 'Best Pipes Co',
-          rating: 3.9,
-          reviewCount: 45,
-          address: '456 Oak Ave, Austin, TX',
-          website: null,
-          phone: null,
-          socialHandles: {},
-        })),
+        .mockResolvedValueOnce(
+          mockPlace({
+            placeId: 'ChIJtest5678',
+            name: 'Best Pipes Co',
+            rating: 3.9,
+            reviewCount: 45,
+            address: '456 Oak Ave, Austin, TX',
+            website: null,
+            phone: null,
+            socialHandles: {},
+          }),
+        ),
       extractDetailPage: jest.fn(),
       extractTiles: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<GmapsExtractionService>;
 
-    const leadRepository: jest.Mocked<Pick<LeadRepository, 'findMany'>> = {
+    leadRepository = {
       findMany: jest.fn().mockResolvedValue([]),
     };
 
     cursorRepository = {
       findOne: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
+      appendSeen: jest.fn().mockResolvedValue(undefined),
     };
 
     const module = await Test.createTestingModule({
@@ -101,14 +122,13 @@ describe('GoogleMapsAdapter', () => {
   });
 
   it('maps scraped places to RawLeadInput correctly', async () => {
-    const results: any[] = [];
+    const results: RawLeadInput[] = [];
     for await (const lead of adapter.collect({
       organizationId: 'org-1',
       industries: ['plumber'],
       locations: ['Austin TX'],
-      maxResults: 10,
     })) {
-      results.push(lead);
+      results.push(lead as RawLeadInput);
     }
 
     expect(results).toHaveLength(2);
@@ -129,13 +149,13 @@ describe('GoogleMapsAdapter', () => {
     });
   });
 
-  it('respects maxResults limit', async () => {
+  it('caps extraction at maxExtractionsPerQuery', async () => {
     const results: unknown[] = [];
     for await (const lead of adapter.collect({
       organizationId: 'org-1',
       industries: ['plumber'],
       locations: ['Austin TX'],
-      maxResults: 1,
+      maxExtractionsPerQuery: 1,
     })) {
       results.push(lead);
     }
@@ -146,14 +166,14 @@ describe('GoogleMapsAdapter', () => {
     extractionService.extractFromUrl.mockReset();
     extractionService.extractFromUrl.mockResolvedValue(mockPlace({ placeId: null }));
 
-    const results: any[] = [];
+    const results: RawLeadInput[] = [];
     for await (const lead of adapter.collect({
       organizationId: 'org-1',
       industries: ['plumber'],
       locations: ['Austin TX'],
-      maxResults: 1,
+      maxExtractionsPerQuery: 1,
     })) {
-      results.push(lead);
+      results.push(lead as RawLeadInput);
     }
 
     expect(results[0].externalId).toBe('https://www.google.com/maps/place/Acme+Plumbing/data=test');
@@ -170,12 +190,10 @@ describe('GoogleMapsAdapter', () => {
       organizationId: 'org-1',
       industries: ['plumber'],
       locations: ['Austin TX'],
-      maxResults: 10,
     })) {
       results.push(lead);
     }
 
-    // first result skipped (empty name), second yielded
     expect(results).toHaveLength(1);
   });
 
@@ -184,6 +202,8 @@ describe('GoogleMapsAdapter', () => {
       exhausted: true,
       consecutiveZeroRuns: 3,
       lastScrollSteps: 12,
+      seenExternalIds: [],
+      duplicateWallHits: 0,
     } as any);
 
     const results: unknown[] = [];
@@ -192,7 +212,6 @@ describe('GoogleMapsAdapter', () => {
       campaignId: 'campaign-1',
       industries: ['plumber'],
       locations: ['Austin TX'],
-      maxResults: 10,
     })) {
       results.push(lead);
     }
@@ -206,6 +225,8 @@ describe('GoogleMapsAdapter', () => {
       exhausted: true,
       consecutiveZeroRuns: 3,
       lastScrollSteps: 12,
+      seenExternalIds: [],
+      duplicateWallHits: 0,
     } as any);
 
     const results: unknown[] = [];
@@ -214,7 +235,6 @@ describe('GoogleMapsAdapter', () => {
       campaignId: 'campaign-1',
       industries: ['plumber'],
       locations: ['Austin TX'],
-      maxResults: 10,
       ignoreExhausted: true,
     })) {
       results.push(lead);
@@ -223,4 +243,60 @@ describe('GoogleMapsAdapter', () => {
     expect(results).toHaveLength(2);
     expect(searchService.navigateToSearch).toHaveBeenCalled();
   });
+
+  it('skips URLs already in cursor cache', async () => {
+    // Seed cursor with the first URL's placeId — first URL should be skipped
+    cursorRepository.findOne.mockResolvedValue({
+      exhausted: false,
+      consecutiveZeroRuns: 0,
+      lastScrollSteps: 8,
+      seenExternalIds: ['ChIJtest1234'],
+      duplicateWallHits: 0,
+    } as any);
+
+    const results: unknown[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      campaignId: 'campaign-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+    })) {
+      results.push(lead);
+    }
+
+    // First URL (ChIJtest1234) is in cursor cache → skipped; only second URL is extracted
+    expect(results).toHaveLength(1);
+  });
+
+  it('skips URLs already in DB (batch DB dedup)', async () => {
+    // DB already contains the second URL's place
+    leadRepository.findMany.mockResolvedValue([
+      { externalId: 'ChIJtest5678', placeId: 'ChIJtest5678' },
+    ] as any);
+
+    const results: RawLeadInput[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+    })) {
+      results.push(lead as RawLeadInput);
+    }
+
+    // Second URL already in DB → skipped at collection phase; only first URL is extracted
+    expect(results).toHaveLength(1);
+    expect(results[0].externalId).toBe('ChIJtest1234');
+  });
 });
+
+// Minimal local type alias so we can annotate results without importing from deep paths
+type RawLeadInput = {
+  source: string;
+  sourceType: string;
+  name: string;
+  externalId: string | null;
+  location?: string;
+  website?: string | null;
+  phone?: string | null;
+  metadata?: Record<string, unknown>;
+};

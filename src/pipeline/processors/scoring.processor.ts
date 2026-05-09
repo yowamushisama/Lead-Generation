@@ -36,6 +36,7 @@ export class ScoringProcessor extends WorkerHost {
     this.logger.log({ message: `Processing scoring job`, jobId: job.id, leadId });
 
     try {
+      if (!leadId) throw new Error(`Scoring job ${job.id} is missing leadId`);
       const lead = await this.leadRepository.findUnique({ where: { id: leadId } });
       if (!lead) throw new Error(`Lead ${leadId} not found`);
 
