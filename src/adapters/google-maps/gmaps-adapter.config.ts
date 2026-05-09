@@ -3,6 +3,7 @@ import { AdapterConfig } from '../../common/interfaces/adapter.interface';
 export interface GmapsAdapterConfig extends AdapterConfig {
   scrollSteps?: number;
   fetchDetails?: boolean;
+  ignoreExhausted?: boolean;
 }
 
 export const GMAPS_PROFILE_KEY = 'gmaps';

@@ -45,8 +45,9 @@ async function main(): Promise<void> {
   const page = await searchService.newPage();
 
   try {
-    console.log(`Navigating to Google Maps: "${industry} in ${location}"...`);
-    await searchService.navigateToSearch(page, industry, location, 'dom-dump');
+    const searchTerm = `${industry} in ${location}`.replace(/\s+/g, ' ').trim();
+    console.log(`Navigating to Google Maps: "${searchTerm}"...`);
+    await searchService.navigateToSearch(page, searchTerm, 'dom-dump');
     await searchService.scrollFeed(page, 3);
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);

@@ -226,6 +226,7 @@ export class CampaignRunnerService {
         keywords,
         locations,
         industries,
+        ignoreExhausted: trigger === 'manual',
         ...(maxResults ? { maxResults } : {}),
       };
 

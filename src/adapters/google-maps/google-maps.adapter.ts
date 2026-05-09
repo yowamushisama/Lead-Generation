@@ -68,6 +68,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
     const rawKeywords = (gmapsConfig.keywords ?? []).filter(Boolean);
     const maxResults = gmapsConfig.maxResults ?? 100;
     const fetchDetails = gmapsConfig.fetchDetails !== false;
+    const ignoreExhausted = gmapsConfig.ignoreExhausted === true;
     const { organizationId, campaignId } = config;
 
     if (locations.length === 0 || industries.length === 0) {
@@ -114,9 +115,13 @@ export class GoogleMapsAdapter extends BaseAdapter {
         // Read cursor to determine scroll depth and whether to skip exhausted queries.
         const cursor = campaignId ? await this.cursorRepository.findOne(campaignId, 'google_maps', qKey) : null;
 
-        if (cursor?.exhausted) {
+        if (cursor?.exhausted && !ignoreExhausted) {
           this.log(`Skipping exhausted query "${searchTerm}"`, { organizationId });
           continue;
+        }
+
+        if (cursor?.exhausted && ignoreExhausted) {
+          this.log(`Retrying exhausted query "${searchTerm}" because ignoreExhausted=true`, { organizationId });
         }
 
         // Adaptive scroll depth: grow by 50% per zero-new run, capped at 30 steps.

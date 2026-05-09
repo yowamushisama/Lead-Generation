@@ -28,6 +28,7 @@ describe('GoogleMapsAdapter', () => {
   let adapter: GoogleMapsAdapter;
   let searchService: jest.Mocked<GmapsSearchService>;
   let extractionService: jest.Mocked<GmapsExtractionService>;
+  let cursorRepository: jest.Mocked<Pick<CampaignScrapeCursorRepository, 'findOne' | 'upsert'>>;
 
   beforeEach(async () => {
     const mockPage = {
@@ -68,7 +69,7 @@ describe('GoogleMapsAdapter', () => {
       findMany: jest.fn().mockResolvedValue([]),
     };
 
-    const cursorRepository: jest.Mocked<Pick<CampaignScrapeCursorRepository, 'findOne' | 'upsert'>> = {
+    cursorRepository = {
       findOne: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
     };
@@ -176,5 +177,50 @@ describe('GoogleMapsAdapter', () => {
 
     // first result skipped (empty name), second yielded
     expect(results).toHaveLength(1);
+  });
+
+  it('skips exhausted queries by default', async () => {
+    cursorRepository.findOne.mockResolvedValue({
+      exhausted: true,
+      consecutiveZeroRuns: 3,
+      lastScrollSteps: 12,
+    } as any);
+
+    const results: unknown[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      campaignId: 'campaign-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      maxResults: 10,
+    })) {
+      results.push(lead);
+    }
+
+    expect(results).toHaveLength(0);
+    expect(searchService.navigateToSearch).not.toHaveBeenCalled();
+  });
+
+  it('retries exhausted queries when ignoreExhausted is true', async () => {
+    cursorRepository.findOne.mockResolvedValue({
+      exhausted: true,
+      consecutiveZeroRuns: 3,
+      lastScrollSteps: 12,
+    } as any);
+
+    const results: unknown[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      campaignId: 'campaign-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      maxResults: 10,
+      ignoreExhausted: true,
+    })) {
+      results.push(lead);
+    }
+
+    expect(results).toHaveLength(2);
+    expect(searchService.navigateToSearch).toHaveBeenCalled();
   });
 });
