@@ -21,10 +21,19 @@ export interface GmapsAdapterConfig extends AdapterConfig {
   maxScrollPhaseMs?: number;
   /** Wallclock budget for the extraction phase only (ms). Default: 35 minutes. */
   maxExtractPhaseMs?: number;
+  /** Enable fast-scroll probe for this run (overrides env flag when true). Default: false. */
+  fastScrollEnabled?: boolean;
 }
 
 export const GMAPS_PROFILE_KEY = 'gmaps';
 export const INTER_QUERY_DELAY_MS = 3000;
+
+// Fast-scroll probe tunables (Phase 2 — probe runs behind GMAPS_FASTSCROLL_ENABLED flag)
+export const FAST_SCROLL_BUDGET = 40;           // max probe scroll steps before falling through
+export const TAIL_HIT_THRESHOLD = 0.4;          // 40% tail-overlap → frontier crossed, switch to extraction
+export const MIN_TAIL_FOR_PROBE = 10;           // skip probe if cursor.tailIds.length < 10
+export const MIN_SHUFFLE_DETECT = 15;           // bail-out if 0 tail-overlap after N probe scrolls
+export const MAX_FAST_SCROLL_PHASE_MS = 90_000; // 90s wallclock guard for probe phase
 
 // Per-query tunables (adapter-side safety ceilings — not the saved-lead goal)
 export const DUPLICATE_WALL_THRESHOLD = 15;    // consecutive scroll batches that yielded only known-dup URLs

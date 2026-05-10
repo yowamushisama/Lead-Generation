@@ -17,6 +17,7 @@ import { ReportArtifactRepository } from './repositories/report-artifact.reposit
 import { CampaignScrapeCursorRepository } from './repositories/campaign-scrape-cursor.repository';
 import { CampaignRunLogRepository } from './repositories/campaign-run-log.repository';
 import { GmapsScrapeRunLogRepository } from './repositories/gmaps-scrape-run-log.repository';
+import { IcpProfileChangeLogRepository } from './repositories/icp-profile-change-log.repository';
 
 @Global()
 @Module({
@@ -39,6 +40,7 @@ import { GmapsScrapeRunLogRepository } from './repositories/gmaps-scrape-run-log
     CampaignScrapeCursorRepository,
     CampaignRunLogRepository,
     GmapsScrapeRunLogRepository,
+    IcpProfileChangeLogRepository,
   ],
   exports: [
     PrismaService,
@@ -59,6 +61,7 @@ import { GmapsScrapeRunLogRepository } from './repositories/gmaps-scrape-run-log
     CampaignScrapeCursorRepository,
     CampaignRunLogRepository,
     GmapsScrapeRunLogRepository,
+    IcpProfileChangeLogRepository,
   ],
 })
 export class DatabaseModule {}

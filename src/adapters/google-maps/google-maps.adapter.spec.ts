@@ -50,7 +50,7 @@ describe('GoogleMapsAdapter', () => {
   let searchService: jest.Mocked<GmapsSearchService>;
   let extractionService: jest.Mocked<GmapsExtractionService>;
   let leadRepository: jest.Mocked<Pick<LeadRepository, 'findMany'>>;
-  let cursorRepository: jest.Mocked<Pick<CampaignScrapeCursorRepository, 'findOne' | 'upsert' | 'appendSeen'>>;
+  let cursorRepository: jest.Mocked<Pick<CampaignScrapeCursorRepository, 'findActive' | 'findOne' | 'upsert' | 'appendSeen' | 'appendTail' | 'updateAnchor'>>;
 
   beforeEach(async () => {
     const mockPage = {
@@ -90,9 +90,12 @@ describe('GoogleMapsAdapter', () => {
     };
 
     cursorRepository = {
+      findActive: jest.fn().mockResolvedValue(null),
       findOne: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
       appendSeen: jest.fn().mockResolvedValue(undefined),
+      appendTail: jest.fn().mockResolvedValue(undefined),
+      updateAnchor: jest.fn().mockResolvedValue(undefined),
     };
 
     const module = await Test.createTestingModule({
@@ -198,11 +201,13 @@ describe('GoogleMapsAdapter', () => {
   });
 
   it('skips exhausted queries by default', async () => {
-    cursorRepository.findOne.mockResolvedValue({
+    // Normal flow uses findActive (excludes archived); exhausted=true triggers the skip.
+    cursorRepository.findActive.mockResolvedValue({
       exhausted: true,
       consecutiveZeroRuns: 3,
       lastScrollSteps: 12,
       seenExternalIds: [],
+      tailIds: [],
       duplicateWallHits: 0,
     } as any);
 
@@ -221,11 +226,13 @@ describe('GoogleMapsAdapter', () => {
   });
 
   it('retries exhausted queries when ignoreExhausted is true', async () => {
+    // ignoreExhausted=true uses findOne({includeArchived:true}) to surface archived cursors.
     cursorRepository.findOne.mockResolvedValue({
       exhausted: true,
       consecutiveZeroRuns: 3,
       lastScrollSteps: 12,
       seenExternalIds: [],
+      tailIds: [],
       duplicateWallHits: 0,
     } as any);
 
@@ -245,12 +252,14 @@ describe('GoogleMapsAdapter', () => {
   });
 
   it('skips URLs already in cursor cache', async () => {
-    // Seed cursor with the first URL's placeId — first URL should be skipped
-    cursorRepository.findOne.mockResolvedValue({
+    // Seed cursor with the first URL's placeId — first URL should be skipped.
+    // Normal flow goes through findActive (not findOne).
+    cursorRepository.findActive.mockResolvedValue({
       exhausted: false,
       consecutiveZeroRuns: 0,
       lastScrollSteps: 8,
       seenExternalIds: ['ChIJtest1234'],
+      tailIds: [],
       duplicateWallHits: 0,
     } as any);
 

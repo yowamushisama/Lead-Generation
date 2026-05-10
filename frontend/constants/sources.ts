@@ -2,7 +2,7 @@
 export const SOURCE_LABELS: Record<string, string> = {
   linkedin: 'LinkedIn',
   google_maps: 'Maps',
-  csv: 'CSV',
+  csv_import: 'CSV',
   webhook: 'Hook',
 };
 
@@ -10,6 +10,6 @@ export const SOURCE_LABELS: Record<string, string> = {
 export const SOURCE_COLORS: Record<string, string> = {
   linkedin: '#0077B5',
   google_maps: '#34A853',
-  csv: '#9CA3AF',
+  csv_import: '#9CA3AF',
   webhook: '#F59E0B',
 };

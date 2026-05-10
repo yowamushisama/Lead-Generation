@@ -54,7 +54,7 @@ export function StatusBadge({ status }: { status: LeadStatus }) {
 const SOURCE_STYLES: Record<string, { icon: string; label: string; cls: string }> = {
   linkedin:    { icon: 'in', label: 'LinkedIn',   cls: 'bg-[#0A66C2]/15 text-[#4A9EF5]' },
   google_maps: { icon: 'G',  label: 'Maps',       cls: 'bg-jade/10 text-jade' },
-  csv:         { icon: 'csv', label: 'CSV',        cls: 'bg-orchid/10 text-orchid' },
+  csv_import:  { icon: 'csv', label: 'CSV',        cls: 'bg-orchid/10 text-orchid' },
   webhook:     { icon: '⚡',  label: 'Webhook',    cls: 'bg-gold/10 text-gold' },
   reddit:      { icon: 'r',  label: 'Reddit',     cls: 'bg-[#FF4500]/10 text-[#FF6B35]' },
   manual:      { icon: '✎',  label: 'Manual',     cls: 'bg-mist/10 text-mist' },

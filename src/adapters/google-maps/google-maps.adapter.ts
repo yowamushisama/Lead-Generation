@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { BaseAdapter } from '../base.adapter';
 import { AdapterConfig } from '../../common/interfaces/adapter.interface';
@@ -15,42 +14,19 @@ import {
   MAX_SCROLL_PHASE_MS,
   MAX_EXTRACT_PHASE_MS,
   MAX_EXTRACTIONS_PER_QUERY,
+  FAST_SCROLL_BUDGET,
+  TAIL_HIT_THRESHOLD,
+  MIN_TAIL_FOR_PROBE,
+  MIN_SHUFFLE_DETECT,
+  MAX_FAST_SCROLL_PHASE_MS,
 } from './gmaps-adapter.config';
+import { FastScrollResult } from './gmaps-search.service';
 import { retryWithBackoff, isRetryableError } from '../shared/retry.util';
 import { LeadRepository } from '../../database/repositories/lead.repository';
 import { CampaignScrapeCursorRepository } from '../../database/repositories/campaign-scrape-cursor.repository';
-
-/**
- * Extract a stable place identifier from a Google Maps URL without navigating to it.
- *
- * Google Maps uses two ID formats depending on the URL type:
- *   - Listing card URLs (search results feed): !1s0xHEX:0xHEX  (hex-encoded lat/lng pair)
- *   - Detail page URLs (after navigation):     !19sChIJxxxxxxx  (base64/ChIJ canonical ID)
- *
- * We try ChIJ first, then fall back to the hex format always present on listing card hrefs.
- * Returning null means neither is in the URL; the caller falls back to the full URL string.
- */
-function placeIdFromUrl(url: string): string | null {
-  const chij = url.match(/!19s(ChIJ[A-Za-z0-9_-]+)/);
-  if (chij) return chij[1];
-  // Hex format present on listing cards: !1s0x<hex>%3A0x<hex> or !1s0x<hex>:0x<hex>
-  const hex = url.match(/!1s(0x[0-9a-f]+(?:%3A|:)0x[0-9a-f]+)/i);
-  if (hex) return hex[1].toLowerCase().replace('%3a', ':');
-  return null;
-}
-
-/** Strip query-string from a Google Maps URL, keeping the stable data= path segment. */
-function normalizeGmapsUrl(url: string): string {
-  return url.split('?')[0];
-}
-
-/** Stable query identifier for cursor tracking. */
-function queryKey(keyword: string, industry: string, location: string): string {
-  return createHash('sha256')
-    .update(`${keyword}|${industry}|${location}`)
-    .digest('hex')
-    .slice(0, 16);
-}
+import { placeIdFromUrl, normalizeGmapsUrl } from './gmaps-url-utils';
+import { gmapsListingKey } from './gmaps-listing-key';
+import { queryKey } from './gmaps-query-key';
 
 @Injectable()
 export class GoogleMapsAdapter extends BaseAdapter {
@@ -90,6 +66,9 @@ export class GoogleMapsAdapter extends BaseAdapter {
     const rawKeywords = (gmapsConfig.keywords ?? []).filter(Boolean);
     const fetchDetails = gmapsConfig.fetchDetails !== false;
     const ignoreExhausted = gmapsConfig.ignoreExhausted === true;
+    const fastScrollEnabled =
+      process.env['GMAPS_FASTSCROLL_ENABLED'] === 'true' ||
+      gmapsConfig.fastScrollEnabled === true;
     const statsCollector = gmapsConfig.statsCollector;
     const cancellationSignal = gmapsConfig.cancellationSignal ?? { reason: null };
     const maxExtractionsPerQuery = gmapsConfig.maxExtractionsPerQuery ?? MAX_EXTRACTIONS_PER_QUERY;
@@ -122,7 +101,12 @@ export class GoogleMapsAdapter extends BaseAdapter {
       for (const { keyword, industry, location, searchTerm } of terms) {
         const qKey = queryKey(keyword, industry, location);
 
-        const cursor = campaignId ? await this.cursorRepository.findOne(campaignId, 'google_maps', qKey) : null;
+        // findActive excludes archived cursors; manual ignoreExhausted runs also resurface archived ones
+        const cursor = campaignId
+          ? ignoreExhausted
+            ? await this.cursorRepository.findOne(campaignId, 'google_maps', qKey, { includeArchived: true })
+            : await this.cursorRepository.findActive(campaignId, 'google_maps', qKey)
+          : null;
 
         if (cursor?.exhausted && !ignoreExhausted) {
           this.log(`Skipping exhausted query "${searchTerm}"`, { organizationId });
@@ -147,7 +131,14 @@ export class GoogleMapsAdapter extends BaseAdapter {
         let scrollAttempts = 0;
 
         const seenAccumulator: string[] = [];
+        // recentObservedIds tracks every listing key seen in the DOM this run (before any dedup).
+        // Used to build the tail anchor for the fast-scroll probe in subsequent runs.
+        const recentObservedIds: string[] = [];
         const batchYielded: RawLeadInput[] = [];
+        // lastExtractedDedupeId: listing-card URL key (gmapsListingKey) of the last successfully
+        // extracted lead. Stored as anchorPlaceId so the Phase 2 probe can seek this exact key,
+        // which is guaranteed to be consistent with tailIds (both derived from listing-card URLs).
+        let lastExtractedDedupeId: string | null = null;
 
         // Per-query scope: finally fires whether yields complete normally or runner cancels.
         // This ensures both the log row and cursor are always finalized.
@@ -161,41 +152,141 @@ export class GoogleMapsAdapter extends BaseAdapter {
             });
           }
 
+          // Fast-scroll probe: runs once per query (not per retry) before retryWithBackoff.
+          // Navigation happens here if the probe runs; retryWithBackoff skips it on first attempt.
+          let probeResult: FastScrollResult = {
+            mode: 'NORMAL', knownDuplicateKeys: new Set(), freshProbeUrls: [],
+            probeSeenCount: 0, hitRate: 0, reason: 'DISABLED', scrolls: 0,
+          };
+          let probeNavigated = false;
+
+          if (cursor && fastScrollEnabled && !ignoreExhausted && fetchDetails) {
+            await this.searchService.navigateToSearch(page, searchTerm, organizationId);
+            probeNavigated = true;
+            probeResult = await this.searchService.fastScrollProbe(page, {
+              cursorTailIds: (cursor as any).tailIds ?? [],
+              cursorSeenIds,
+              anchor: (cursor as any).anchorPlaceId ?? null,
+              budget: FAST_SCROLL_BUDGET,
+              maxMs: MAX_FAST_SCROLL_PHASE_MS,
+              minTailForProbe: MIN_TAIL_FOR_PROBE,
+              tailHitThreshold: TAIL_HIT_THRESHOLD,
+              minShuffleDetect: MIN_SHUFFLE_DETECT,
+            });
+            this.log(
+              `fastScrollProbe: mode=${probeResult.mode} reason=${probeResult.reason} scrolls=${probeResult.scrolls} hitRate=${probeResult.hitRate.toFixed(2)} fresh=${probeResult.freshProbeUrls.length} known=${probeResult.knownDuplicateKeys.size}`,
+              { organizationId },
+            );
+            if (logId && statsCollector) {
+              statsCollector.recordProbeResult(logId, {
+                mode: probeResult.mode,
+                scrolls: probeResult.scrolls,
+                hitRate: probeResult.hitRate,
+                reason: probeResult.reason,
+                freshProbeUrlCount: probeResult.freshProbeUrls.length,
+                knownDupCount: probeResult.knownDuplicateKeys.size,
+                probeSeenCount: probeResult.probeSeenCount,
+              });
+            }
+          }
+
           try {
             await retryWithBackoff(
               async () => {
+                // Only skip re-navigation when the probe left the page at a useful position.
+                // NORMAL_FRESH means the feed was shuffled — the probe position is unreliable,
+                // so we must navigate fresh even on the first attempt after a NORMAL_FRESH probe.
+                // Retries always re-navigate regardless.
+                const usableProbePosition =
+                  probeResult.mode === 'NORMAL_FROM_ANCHOR' ||
+                  probeResult.mode === 'NORMAL_FROM_TAIL' ||
+                  probeResult.mode === 'NORMAL_FROM_PARTIAL';
+                const skipNav = probeNavigated && usableProbePosition;
+                probeNavigated = false;
+
                 batchYielded.length = 0;
                 seenAccumulator.length = 0;
                 scrollAttempts = 0;
+                lastExtractedDedupeId = null;
 
-                await this.searchService.navigateToSearch(page, searchTerm, organizationId);
+                if (!skipNav) {
+                  await this.searchService.navigateToSearch(page, searchTerm, organizationId);
+                }
 
                 if (fetchDetails) {
+                  // ── Pre-scroll: process freshProbeUrls from probe (if any) ──────
+                  // These are URLs the probe observed that weren't in cursor data.
+                  // Run them through DB dedup before the main scroll to avoid re-extraction.
+                  const collectedUrls: string[] = [];
+
+                  if (probeResult.freshProbeUrls.length > 0) {
+                    const freshKeys = probeResult.freshProbeUrls.map(gmapsListingKey);
+                    const freshNormUrls = probeResult.freshProbeUrls.map(normalizeGmapsUrl);
+                    const freshMatches = await this.leadRepository.findMany({
+                      where: {
+                        organizationId,
+                        source: LeadSource.GOOGLE_MAPS,
+                        OR: [
+                          { externalId: { in: freshKeys } },
+                          { placeId: { in: freshKeys } },
+                          { sourceUrl: { in: freshNormUrls } },
+                        ],
+                      },
+                      select: { externalId: true, placeId: true, sourceUrl: true },
+                    });
+                    const freshKnownIds = new Set<string>(
+                      freshMatches.flatMap((m: { externalId: string | null; placeId: string | null; sourceUrl: string | null }) =>
+                        [m.externalId, m.placeId, m.sourceUrl ? normalizeGmapsUrl(m.sourceUrl) : null]
+                          .filter((v): v is string => Boolean(v)),
+                      ),
+                    );
+                    for (const url of probeResult.freshProbeUrls) {
+                      const key = gmapsListingKey(url);
+                      if (freshKnownIds.has(key) || freshKnownIds.has(normalizeGmapsUrl(url))) {
+                        seenAccumulator.push(key);
+                        if (logId && statsCollector) statsCollector.recordDbBatchDuplicate(logId, 1);
+                      } else {
+                        collectedUrls.push(url);
+                      }
+                    }
+                  }
+
                   // ── Phase 1: Adaptive scroll with inline DB dedup per batch ─────
                   // Detects duplicate walls against BOTH cursor cache and DB, so scroll
                   // stops early even when cursor cache hasn't warmed up yet.
-                  const collectedUrls: string[] = [];
+                  // Seed seenInSession with known-duplicate keys from the probe so the scroll
+                  // skips those at URL-collection time, saving per-batch DB lookups.
+                  // Also seed with freshProbeUrls keys to avoid re-yielding them via onBatch.
+                  const probeSeed = new Set(probeResult.knownDuplicateKeys);
+                  for (const url of probeResult.freshProbeUrls) probeSeed.add(gmapsListingKey(url));
+
                   let consecutiveDuplicateBatches = 0;
 
                   const scrollStopReason = await this.searchService.scrollUntilStable(page, {
                     maxScrolls: maxScrollBudgetPerQuery,
                     idleScrollsBeforeStop: NO_NEW_LISTINGS_THRESHOLD,
+                    seedSeenInSession: probeSeed,
                     onScrollStep: () => {
                       scrollAttempts++;
                       if (logId && statsCollector) statsCollector.recordScrollAttempt(logId);
                     },
                     onBatch: async (newUrls) => {
+                      // Track ALL observed listing keys for the tail anchor (before any dedup).
+                      for (const url of newUrls) recentObservedIds.push(gmapsListingKey(url));
+
                       if (Date.now() - queryStartedAt > maxScrollPhaseMs) {
                         return { stop: true, reason: 'QUERY_TIMEOUT' };
                       }
 
                       // Classify each URL against cursor cache first (no DB cost).
+                      // Check both canonical key AND legacy raw key to handle existing rows
+                      // that were written before gmapsListingKey was introduced.
                       const notInCursor: string[] = [];
                       let batchCursorHits = 0;
                       for (const url of newUrls) {
-                        const pid = placeIdFromUrl(url);
-                        const id = pid ?? url;
-                        if (cursorSeenIds.has(id)) {
+                        const id = gmapsListingKey(url);
+                        const legacyId = placeIdFromUrl(url) ?? url;
+                        if (cursorSeenIds.has(id) || cursorSeenIds.has(legacyId)) {
                           batchCursorHits++;
                         } else {
                           notInCursor.push(url);
@@ -210,7 +301,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       // normalizedUrls: query-string stripped listing card URLs matched against
                       // stored sourceUrl — catches existing leads where placeIdFromUrl returns null
                       // because the listing card uses hex format but externalId stored ChIJ.
-                      const batchIds = notInCursor.map((url) => placeIdFromUrl(url) ?? url);
+                      const batchIds = notInCursor.map(gmapsListingKey);
                       const normalizedUrls = notInCursor.map(normalizeGmapsUrl);
                       let dbKnownIds = new Set<string>();
                       if (batchIds.length > 0) {
@@ -237,8 +328,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       let freshCount = 0;
                       let dbDups = 0;
                       for (const url of notInCursor) {
-                        const pid = placeIdFromUrl(url);
-                        const id = pid ?? url;
+                        const id = gmapsListingKey(url);
                         const isKnown = dbKnownIds.has(id) || dbKnownIds.has(normalizeGmapsUrl(url));
                         if (isKnown) {
                           dbDups++;
@@ -291,8 +381,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       break;
                     }
 
-                    const pid = placeIdFromUrl(url);
-                    const dedupeId = pid ?? url;
+                    const dedupeId = gmapsListingKey(url);
 
                     if (attemptSeenIds.has(dedupeId)) continue;
 
@@ -306,8 +395,9 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       continue;
                     }
 
-                    if (pid) attemptSeenIds.add(pid);
+                    attemptSeenIds.add(dedupeId);
                     seenAccumulator.push(dedupeId);
+                    lastExtractedDedupeId = dedupeId;
 
                     const lead = this.toRawLead(place, industry, campaignId, searchTerm, logId);
                     batchYielded.push(lead);
@@ -319,10 +409,12 @@ export class GoogleMapsAdapter extends BaseAdapter {
                   const tiles = await this.extractionService.extractTiles(page);
                   scrollAttempts = 1;
 
-                  // Batch IDs: placeId if available, else URL as fallback.
-                  const batchIds = tiles
-                    .filter((t) => Boolean(t.url))
-                    .map((t) => placeIdFromUrl(t.url!) ?? t.url!);
+                  // Use gmapsListingKey for batchIds so the dedup comparison at tile-loop
+                  // time (which also uses gmapsListingKey) is consistent. Also check sourceUrl
+                  // to catch leads where placeIdFromUrl returned null and the raw URL was stored.
+                  const urlTiles = tiles.filter((t) => Boolean(t.url));
+                  const batchIds = urlTiles.map((t) => gmapsListingKey(t.url!));
+                  const normalizedTileUrls = urlTiles.map((t) => normalizeGmapsUrl(t.url!));
 
                   let knownIds = new Set<string>();
                   if (batchIds.length > 0) {
@@ -333,23 +425,25 @@ export class GoogleMapsAdapter extends BaseAdapter {
                         OR: [
                           { externalId: { in: batchIds } },
                           { placeId: { in: batchIds } },
+                          { sourceUrl: { in: normalizedTileUrls } },
                         ],
                       },
-                      select: { externalId: true, placeId: true },
+                      select: { externalId: true, placeId: true, sourceUrl: true },
                     });
                     knownIds = new Set<string>(
-                      matches.flatMap((m: { externalId: string | null; placeId: string | null }) =>
-                        [m.externalId, m.placeId].filter((v): v is string => Boolean(v)),
+                      matches.flatMap((m: { externalId: string | null; placeId: string | null; sourceUrl: string | null }) =>
+                        [m.externalId, m.placeId, m.sourceUrl ? normalizeGmapsUrl(m.sourceUrl) : null]
+                          .filter((v): v is string => Boolean(v)),
                       ),
                     );
                   }
 
                   for (const tile of tiles) {
                     if (!tile.url) continue;
-                    const pid = placeIdFromUrl(tile.url);
-                    const dedupeId = pid ?? tile.url;
+                    const dedupeId = gmapsListingKey(tile.url);
+                    const legacyId = placeIdFromUrl(tile.url) ?? tile.url;
 
-                    if (cursorSeenIds.has(dedupeId)) {
+                    if (cursorSeenIds.has(dedupeId) || cursorSeenIds.has(legacyId)) {
                       if (logId && statsCollector) statsCollector.recordCursorHit(logId, 1);
                       continue;
                     }
@@ -371,7 +465,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       metadata: {
                         rating: tile.rating,
                         reviewCount: tile.reviewCount,
-                        placeId: pid,
+                        placeId: placeIdFromUrl(tile.url),
                         googleTypes: tile.category ? [tile.category] : [],
                         campaignId,
                         searchQuery: searchTerm,
@@ -431,6 +525,25 @@ export class GoogleMapsAdapter extends BaseAdapter {
             if (seenAccumulator.length > 0) {
               await this.cursorRepository.appendSeen(campaignId, 'google_maps', qKey, seenAccumulator);
             }
+
+            // Write tail anchor: last 80 DOM-observed keys (all URLs seen before dedup).
+            if (recentObservedIds.length > 0) {
+              await this.cursorRepository.appendTail(campaignId, 'google_maps', qKey, recentObservedIds);
+            }
+
+            // anchorPlaceId must be a listing-card URL key (gmapsListingKey), NOT the ChIJ
+            // externalId from the detail page, so it stays consistent with tailIds entries.
+            const anchorPlaceId = lastExtractedDedupeId ?? cursor?.anchorPlaceId ?? null;
+            await this.cursorRepository.updateAnchor(campaignId, 'google_maps', qKey, {
+              anchorPlaceId,
+              keyword,
+              industry,
+              location,
+              lastEndReason: queryEndReason,
+              fastScrollLastUsed: probeResult.scrolls,
+              fastScrollBudgetDelta: probeResult.scrolls,
+              fastScrollHitRate: probeResult.scrolls > 0 ? probeResult.hitRate : undefined,
+            });
           }
         } finally {
           // Fires whether yields completed normally or runner cancelled mid-yield.

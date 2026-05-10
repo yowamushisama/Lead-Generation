@@ -16,14 +16,10 @@ import { LeadStatus } from '../common/enums/lead-status.enum';
 import { getTierFromScore } from '../common/enums/lead-tier.enum';
 import { Lead, Prisma } from '@prisma/client';
 import { LeadDetailResponseDto } from './dto/lead-response.dto';
+import { LeadStats } from './dto/lead-stats.dto';
+import { parseCreatedBefore } from './leads.utils';
 
-export interface LeadStats {
-  total: number;
-  averageScore: number;
-  byTier: Record<string, number>;
-  byStatus: Record<string, number>;
-  bySource: Record<string, number>;
-}
+export { LeadStats };
 
 @Injectable()
 export class LeadsService {
@@ -112,30 +108,56 @@ export class LeadsService {
     pagination: PaginationDto,
   ): Promise<PaginatedResult<Lead>> {
     const { organizationId } = tenant;
+    const includesOptedOutStatus =
+      filter.status === LeadStatus.OPT_OUT || filter.statuses?.includes(LeadStatus.OPT_OUT) === true;
+    const shouldIncludeOptedOut = filter.includeOptedOut === true || includesOptedOutStatus;
 
     const where: Prisma.LeadWhereInput = {
       organizationId,
-      ...(filter.status && { status: filter.status }),
-      ...(filter.tier && { tier: filter.tier }),
-      ...(filter.source && { source: filter.source }),
+      ...(filter.statuses?.length
+        ? { status: { in: filter.statuses } }
+        : filter.status
+        ? { status: filter.status }
+        : {}),
+      ...(filter.tiers?.length
+        ? { tier: { in: filter.tiers as any } }
+        : filter.tier
+        ? { tier: filter.tier }
+        : {}),
+      ...(filter.sources?.length
+        ? { source: { in: filter.sources } }
+        : filter.source
+        ? { source: filter.source }
+        : {}),
       ...(filter.campaignId && { campaignId: filter.campaignId }),
-      ...(filter.minScore !== undefined && { score: { gte: filter.minScore } }),
-      ...(filter.maxScore !== undefined && {
+      ...((filter.minScore !== undefined || filter.maxScore !== undefined) && {
         score: {
           ...(filter.minScore !== undefined ? { gte: filter.minScore } : {}),
-          lte: filter.maxScore,
+          ...(filter.maxScore !== undefined ? { lte: filter.maxScore } : {}),
         },
       }),
       ...(filter.industry && { industry: { contains: filter.industry, mode: 'insensitive' } }),
       ...(filter.location && { location: { contains: filter.location, mode: 'insensitive' } }),
+      ...(filter.role && { role: { contains: filter.role, mode: 'insensitive' } }),
+      ...(filter.minRating !== undefined && { rating: { gte: filter.minRating } }),
+      ...(filter.minReviewCount !== undefined && { reviewCount: { gte: filter.minReviewCount } }),
+      ...(filter.hasEmail === true ? { email: { not: null } } : filter.hasEmail === false ? { email: null } : {}),
+      ...(filter.hasPhone === true ? { phone: { not: null } } : filter.hasPhone === false ? { phone: null } : {}),
       ...(filter.search && {
         OR: [
           { name: { contains: filter.search, mode: 'insensitive' } },
           { company: { contains: filter.search, mode: 'insensitive' } },
+          { role: { contains: filter.search, mode: 'insensitive' } },
           { email: { contains: filter.search, mode: 'insensitive' } },
         ],
       }),
-      optedOut: false,
+      ...((filter.createdAfter || filter.createdBefore) && {
+        createdAt: {
+          ...(filter.createdAfter ? { gte: new Date(filter.createdAfter) } : {}),
+          ...(filter.createdBefore ? { lte: parseCreatedBefore(filter.createdBefore) } : {}),
+        },
+      }),
+      ...(!shouldIncludeOptedOut && { optedOut: false }),
     };
 
     const [leads, total] = await Promise.all([

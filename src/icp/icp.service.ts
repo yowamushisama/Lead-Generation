@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
+import { IcpProfileChangeLogRepository } from '../database/repositories/icp-profile-change-log.repository';
 import { LeadRepository } from '../database/repositories/lead.repository';
+import { PrismaService } from '../database/prisma.service';
 import { TenantContext } from '../common/interfaces/tenant-context.interface';
 import { ICPConfig, ICPMatch } from '../common/types/icp.types';
 import { AIProviderFactory } from '../ai/ai-provider.factory';
@@ -9,17 +11,11 @@ import {
   VALID_ICP_STAGES,
   buildICPEnhancePrompt,
 } from '../ai/prompts/icp-enhance.prompt';
+import { CreateICPDto } from './dto/create-icp.dto';
+import { UpdateICPDto } from './dto/update-icp.dto';
+import { resolveICPField, diffICPFields } from './icp-change-log.utils';
 
-export interface CreateICPDto {
-  name: string;
-  config: ICPConfig;
-}
-
-export interface UpdateICPDto {
-  name?: string;
-  config?: Partial<ICPConfig>;
-  isActive?: boolean;
-}
+export { CreateICPDto, UpdateICPDto };
 
 @Injectable()
 export class ICPService {
@@ -29,7 +25,9 @@ export class ICPService {
 
   constructor(
     private readonly icpProfileRepository: IcpProfileRepository,
+    private readonly icpChangeLogRepository: IcpProfileChangeLogRepository,
     private readonly leadRepository: LeadRepository,
+    private readonly prisma: PrismaService,
     private readonly aiFactory: AIProviderFactory,
   ) {}
 
@@ -68,19 +66,51 @@ export class ICPService {
   }
 
   async update(tenant: TenantContext, id: string, dto: UpdateICPDto) {
-    await this.findOne(tenant, id);
+    const existing = await this.findOne(tenant, id);
+
+    const mergedConfig = dto.config !== undefined
+      ? { ...(existing.config as object ?? {}), ...dto.config }
+      : existing.config;
 
     const updateData: Record<string, unknown> = {};
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
     if (dto.config !== undefined) {
-      // Merge config
-      const existing = await this.findOne(tenant, id);
-      updateData.config = { ...(existing.config as unknown as ICPConfig), ...dto.config };
+      updateData.config = mergedConfig;
       updateData.version = { increment: 1 };
     }
 
-    return this.icpProfileRepository.update({ where: { id }, data: updateData as never });
+    const fromVersion = existing.version;
+    const toVersion = dto.config !== undefined ? fromVersion + 1 : fromVersion;
+
+    // Diff effective resolved values (top-level column OR config.*) for tracked fields.
+    const simulatedAfter = { ...existing, ...updateData, config: mergedConfig };
+    const tracked = ['targetIndustries', 'targetLocations', 'buyerSignals', 'urgencySignals'];
+    const changes = diffICPFields(existing, simulatedAfter, tracked);
+
+    // Also log raw config blob if it changed (fieldName='config' gives a full before/after snapshot).
+    if (dto.config !== undefined && JSON.stringify(existing.config) !== JSON.stringify(mergedConfig)) {
+      changes.push({ field: 'config', before: existing.config, after: mergedConfig });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (changes.length > 0) {
+        await this.icpChangeLogRepository.createMany(
+          tx as any,
+          changes.map((c) => ({
+            profileId: id,
+            organizationId: tenant.organizationId,
+            changedBy: (tenant as any).userId ?? null,
+            fieldName: c.field,
+            beforeValue: c.before,
+            afterValue: c.after,
+            fromVersion,
+            toVersion,
+          })),
+        );
+      }
+      return (tx as any).iCPProfile.update({ where: { id }, data: updateData });
+    });
   }
 
   async matchLead(

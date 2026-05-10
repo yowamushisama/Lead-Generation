@@ -233,10 +233,25 @@ model CampaignScrapeCursor {
   seenExternalIds      String[]  @default([])
   lastScrollDepth      Int       @default(0)
   duplicateWallHits    Int       @default(0)
+  // Fast-scroll resume fields (Phase 1 — populated, Phase 2 — consumed by probe)
+  tailIds              String[]  @default([])  // last 80 listing keys observed in DOM
+  anchorPlaceId        String?                 // listing key of last NEW lead from previous run
+  keyword              String?                 // plaintext for debugging (not the hashed queryKey)
+  industry             String?
+  location             String?
+  lastEndReason        String?
+  fastScrollBudgetUsed Int       @default(0)
+  fastScrollLastUsed   Int       @default(0)
+  fastScrollHitRate    Float?
+  // Reconciliation fields (Phase 3)
+  archived             Boolean   @default(false)
+  archivedAt           DateTime?
+  archivedReason       String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   @@unique([campaignId, source, queryKey])
   @@index([campaignId, source])
+  @@index([campaignId, archived])
 }
 
 model ReportArtifact {
@@ -323,9 +338,26 @@ model ICPProfile {
   conversionRate  Float?
   isActive        Boolean   @default(true)
   campaigns       Campaign[]
+  changeLog       ICPProfileChangeLog[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   @@index([organizationId, isActive])
+}
+
+model ICPProfileChangeLog {
+  id             String     @id @default(uuid())
+  profile        ICPProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId      String
+  organizationId String
+  changedAt      DateTime   @default(now())
+  changedBy      String?
+  fieldName      String
+  beforeValue    Json?
+  afterValue     Json?
+  fromVersion    Int
+  toVersion      Int
+  @@index([profileId, changedAt])
+  @@index([organizationId, fieldName, changedAt])
 }
 
 model AnalyticsEvent {

@@ -17,9 +17,12 @@ export type LeadStatus =
 export type LeadSource =
   | 'linkedin'
   | 'google_maps'
-  | 'csv'
+  | 'csv_import'
   | 'webhook'
   | 'reddit'
+  | 'twitter'
+  | 'hacker_news'
+  | 'producthunt'
   | 'manual'
   | 'api';
 
@@ -206,6 +209,11 @@ export interface LeadFilters {
   maxScore?: number;
   industry?: string;
   location?: string;
+  role?: string;
+  minRating?: number;
+  minReviewCount?: number;
+  hasEmail?: boolean;
+  hasPhone?: boolean;
   search?: string;
   createdAfter?: string;
   createdBefore?: string;

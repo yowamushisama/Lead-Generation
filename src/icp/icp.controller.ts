@@ -15,7 +15,9 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
-import { ICPService, CreateICPDto, UpdateICPDto } from './icp.service';
+import { ICPService } from './icp.service';
+import { CreateICPDto } from './dto/create-icp.dto';
+import { UpdateICPDto } from './dto/update-icp.dto';
 import { ICPProfileResponseDto, ICPStatsResponseDto } from './dto/icp-response.dto';
 import { EnhanceICPDto } from './dto/enhance-icp.dto';
 import { ICPConfig } from '../common/types/icp.types';

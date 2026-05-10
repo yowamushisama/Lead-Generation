@@ -1,4 +1,6 @@
-import { GmapsScrapeRunLogRepository } from '../../database/repositories/gmaps-scrape-run-log.repository';
+import { GmapsScrapeRunLogRepository, ProbeStats } from '../../database/repositories/gmaps-scrape-run-log.repository';
+
+export { ProbeStats };
 
 interface QueryStats {
   logId: string;
@@ -9,6 +11,7 @@ interface QueryStats {
   dbBatchDuplicates: number;
   extractionFailures: number;
   candidatesExtracted: number;
+  probe?: ProbeStats;
 }
 
 export interface GmapsRunStatsCollector {
@@ -25,6 +28,7 @@ export interface GmapsRunStatsCollector {
   recordDbBatchDuplicate(logId: string, n: number): void;
   recordExtractionFailure(logId: string, n: number): void;
   recordCandidateExtracted(logId: string): void;
+  recordProbeResult(logId: string, stats: ProbeStats): void;
   finishQuery(logId: string, endReason: string, errorSummary?: string): Promise<void>;
   getTotalDuplicatesAtAdapter(): number;
 }
@@ -96,11 +100,15 @@ export class GmapsRunStatsCollectorImpl implements GmapsRunStatsCollector {
     if (s) s.candidatesExtracted++;
   }
 
+  recordProbeResult(logId: string, stats: ProbeStats): void {
+    const s = this.queries.get(logId);
+    if (s) s.probe = stats;
+  }
+
   async finishQuery(logId: string, endReason: string, errorSummary?: string): Promise<void> {
     const s = this.queries.get(logId);
     if (!s) return;
 
-    // Accumulate into the persistent total BEFORE deleting from map.
     this.totalDuplicates += s.cursorCacheHits + s.dbBatchDuplicates;
 
     const now = new Date();
@@ -115,6 +123,7 @@ export class GmapsRunStatsCollectorImpl implements GmapsRunStatsCollector {
       candidatesExtracted: s.candidatesExtracted,
       endReason,
       errorSummary,
+      probeStats: s.probe,
     });
     this.queries.delete(logId);
   }

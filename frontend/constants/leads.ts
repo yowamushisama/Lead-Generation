@@ -1,4 +1,4 @@
-import type { LeadStatus, LeadTier } from '@/models';
+import type { LeadStatus, LeadTier, LeadSource } from '@/models';
 
 export const ALL_STATUSES: LeadStatus[] = [
   'NEW', 'ENRICHED', 'SCORED', 'PERSONALIZED', 'MESSAGE_DRAFTED',
@@ -28,3 +28,28 @@ export const TIER_COLORS: Record<string, string> = {
   WARM: 'bg-tangerine/10 text-tangerine',
   COLD: 'bg-aqua/10 text-aqua',
 };
+
+export const STATUS_LABELS: Record<LeadStatus, string> = {
+  NEW:              'New',
+  ENRICHED:         'Enriched',
+  SCORED:           'Scored',
+  PERSONALIZED:     'Personalized',
+  MESSAGE_DRAFTED:  'Drafted',
+  MESSAGE_APPROVED: 'Approved',
+  OUTREACH_SENT:    'Sent',
+  REPLIED:          'Replied',
+  MEETING_BOOKED:   'Meeting',
+  CONVERTED:        'Converted',
+  DISQUALIFIED:     'Disqualified',
+  OPT_OUT:          'Opted Out',
+};
+
+export const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
+  { value: 'linkedin',    label: 'LinkedIn' },
+  { value: 'google_maps', label: 'Maps' },
+  { value: 'csv_import',  label: 'CSV' },
+  { value: 'webhook',     label: 'Webhook' },
+  { value: 'reddit',      label: 'Reddit' },
+  { value: 'manual',      label: 'Manual' },
+  { value: 'api',         label: 'API' },
+];

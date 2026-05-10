@@ -6,11 +6,11 @@ import {
   Download, Filter, LayoutGrid, Table2, Search, X, Columns,
 } from 'lucide-react';
 import { leads as leadsApi } from '@/lib/api-client';
-import type { LeadStatus, LeadTier } from '@/models';
+import type { LeadStatus } from '@/models';
 import { OPTIONAL_COLS } from '@/constants/lead-columns';
 import { LEADS_COL_VISIBILITY_KEY_CAMPAIGN } from '@/constants/lead-columns';
-import { TIER_OPTIONS } from '@/constants/leads';
 import { SourceToggle, type SourceTab } from '@/components/ui/source-toggle';
+import { FilterDrawer, DRAWER_DEFAULTS, countDrawerFilters, type DrawerFilters } from '@/components/ui/filter-drawer';
 import { cn } from '@/lib/utils';
 import { exportLeadsCsv } from './leads-csv';
 import { LeadBoard } from './lead-board';
@@ -33,13 +33,14 @@ export function LeadIntelligence({
   const [view, setView]             = useState<'table' | 'kanban'>('table');
   const [source, setSource]         = useState<SourceTab>('all');
   const [search, setSearch]         = useState('');
-  const [tierFilter, setTierFilter] = useState<LeadTier | 'all'>('all');
-  const [showFilters, setShowFilters]   = useState(false);
+  const [drawerFilters, setDrawerFilters] = useState<DrawerFilters>(DRAWER_DEFAULTS);
+  const [showFilters, setShowFilters]     = useState(false);
   const [showColPicker, setShowColPicker] = useState(false);
   const [sortKey, setSortKey]   = useState<SortKey>('score');
   const [sortDir, setSortDir]   = useState<SortDir>('desc');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage]             = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
 
   const colVisKey = campaignId ? LEADS_COL_VISIBILITY_KEY_CAMPAIGN : undefined;
   const { visible, toggle, resetToDefaults } = useColumnVisibility(colVisKey);
@@ -56,13 +57,45 @@ export function LeadIntelligence({
     return () => document.removeEventListener('mousedown', handler);
   }, [showColPicker]);
 
+  const activeFilterCount = countDrawerFilters(drawerFilters);
+  const searchTerm = search.trim();
+  const leadQueryParams = {
+    ...(campaignId ? { campaignId } : {}),
+    // Source: drawer multi overrides toolbar single
+    ...(drawerFilters.sources.length
+      ? { sources: drawerFilters.sources.join(',') }
+      : source !== 'all'
+      ? { source }
+      : {}),
+    // Drawer filters
+    ...(drawerFilters.statuses.length ? { statuses: drawerFilters.statuses.join(',') } : {}),
+    ...(drawerFilters.tiers.length    ? { tiers:    drawerFilters.tiers.join(',')    } : {}),
+    ...(drawerFilters.role            ? { role:     drawerFilters.role               } : {}),
+    ...(drawerFilters.minScore > 0    ? { minScore: drawerFilters.minScore           } : {}),
+    ...(drawerFilters.maxScore < 100  ? { maxScore: drawerFilters.maxScore           } : {}),
+    ...(drawerFilters.minRating !== undefined ? { minRating: drawerFilters.minRating } : {}),
+    ...(drawerFilters.minReviewCount  ? { minReviewCount: Number(drawerFilters.minReviewCount) } : {}),
+    ...(drawerFilters.industry        ? { industry:  drawerFilters.industry          } : {}),
+    ...(drawerFilters.location        ? { location:  drawerFilters.location          } : {}),
+    ...(drawerFilters.hasEmail !== 'any' ? { hasEmail: drawerFilters.hasEmail === 'yes' } : {}),
+    ...(drawerFilters.hasPhone !== 'any' ? { hasPhone: drawerFilters.hasPhone === 'yes' } : {}),
+    ...(drawerFilters.createdAfter    ? { createdAfter:  drawerFilters.createdAfter  } : {}),
+    ...(drawerFilters.createdBefore   ? { createdBefore: drawerFilters.createdBefore } : {}),
+    ...(drawerFilters.includeOptedOut ? { includeOptedOut: true                      } : {}),
+    search: searchTerm || undefined,
+    sortBy: sortKey === 'createdAt' ? 'createdAt' : sortKey,
+    sortOrder: sortDir,
+  };
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [campaignId, source, drawerFilters, searchTerm, page]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['leads', { campaignId, source, tier: tierFilter, page, pageSize: PAGE_SIZE }],
+    queryKey: ['leads', { ...leadQueryParams, page, pageSize: PAGE_SIZE }],
     queryFn: () =>
       leadsApi.list({
-        ...(campaignId ? { campaignId } : {}),
-        source: source === 'all' ? undefined : source,
-        tier: tierFilter === 'all' ? undefined : tierFilter,
+        ...leadQueryParams,
         limit: PAGE_SIZE,
         page,
       }),
@@ -84,16 +117,6 @@ export function LeadIntelligence({
 
   const filtered = useMemo(() => {
     let rows = allLeads;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      rows = rows.filter(
-        (l) =>
-          l.name?.toLowerCase().includes(q) ||
-          l.company?.toLowerCase().includes(q) ||
-          l.role?.toLowerCase().includes(q) ||
-          l.email?.toLowerCase().includes(q),
-      );
-    }
     return [...rows].sort((a, b) => {
       let av: string | number = 0;
       let bv: string | number = 0;
@@ -105,7 +128,7 @@ export function LeadIntelligence({
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [allLeads, search, sortKey, sortDir]);
+  }, [allLeads, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -125,9 +148,20 @@ export function LeadIntelligence({
     else setSelected(new Set(filtered.map((l) => l.id)));
   }
 
-  function exportCSV() {
-    const rows = filtered.filter((l) => selected.size === 0 || selected.has(l.id));
-    exportLeadsCsv(rows, activeCols);
+  async function exportCSV() {
+    if (isExporting) return;
+
+    setIsExporting(true);
+    try {
+      const rows =
+        selected.size > 0
+          ? filtered.filter((l) => selected.has(l.id))
+          : await leadsApi.listAll(leadQueryParams);
+
+      exportLeadsCsv(rows, activeCols);
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   const totalPages   = Math.ceil(total / PAGE_SIZE);
@@ -139,7 +173,7 @@ export function LeadIntelligence({
   if (!embedded && view === 'kanban') {
     return (
       <div className="space-y-4 animate-fade-in">
-        <ViewHeader view={view} setView={setView} total={total} selectedCount={selected.size} onExport={exportCSV} />
+        <ViewHeader view={view} setView={setView} total={total} selectedCount={selected.size} onExport={exportCSV} isExporting={isExporting} />
         <LeadBoard />
       </div>
     );
@@ -149,7 +183,7 @@ export function LeadIntelligence({
     <div className="space-y-4 animate-fade-in">
 
       {!embedded && (
-        <ViewHeader view={view} setView={setView} total={total} selectedCount={selected.size} onExport={exportCSV} />
+        <ViewHeader view={view} setView={setView} total={total} selectedCount={selected.size} onExport={exportCSV} isExporting={isExporting} />
       )}
 
       {/* Filter bar */}
@@ -160,8 +194,8 @@ export function LeadIntelligence({
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-dusk" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, company, role…"
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Search name, company, role..."
             className="h-9 w-full rounded-lg border border-ink/[0.06] bg-surface pl-9 pr-4 font-mono text-[11px] text-ink placeholder:text-mist/60 focus:border-aqua/30 focus:outline-none focus:ring-1 focus:ring-aqua/20"
           />
           {search && (
@@ -171,27 +205,22 @@ export function LeadIntelligence({
           )}
         </div>
 
-        <select
-          value={tierFilter}
-          onChange={(e) => setTierFilter(e.target.value as LeadTier | 'all')}
-          className="h-9 rounded-lg border border-ink/[0.06] bg-surface px-3 font-mono text-[11px] text-mist focus:border-aqua/30 focus:outline-none"
-        >
-          {TIER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-
         <button
-          onClick={() => setShowFilters(!showFilters)}
+          onClick={() => setShowFilters(true)}
           className={cn(
             'flex h-9 items-center gap-1.5 rounded-lg border px-3.5 font-mono text-[11px] font-500 transition-colors',
-            showFilters
+            showFilters || activeFilterCount > 0
               ? 'border-aqua/50 bg-aqua/10 text-aqua shadow-[0_0_0_1px_rgba(0,200,200,0.15)]'
               : 'border-ink/[0.14] bg-surface text-ink/70 hover:border-ink/30 hover:text-ink hover:bg-ink/[0.04]',
           )}
         >
           <Filter className="h-3.5 w-3.5" />
           Filters
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-aqua/20 px-1.5 py-0.5 font-mono text-[9px] font-600 text-aqua leading-none">
+              {activeFilterCount}
+            </span>
+          )}
         </button>
 
         {/* Column picker trigger */}
@@ -214,10 +243,11 @@ export function LeadIntelligence({
         {embedded && (
           <button
             onClick={exportCSV}
+            disabled={isExporting}
             className="ml-auto flex h-9 items-center gap-1.5 rounded-lg border border-ink/[0.14] bg-surface px-3.5 font-mono text-[11px] font-500 text-ink/70 transition-colors hover:border-ink/30 hover:text-ink hover:bg-ink/[0.04]"
           >
             <Download className="h-3.5 w-3.5" />
-            Export
+            {isExporting ? 'Exporting' : 'Export'}
           </button>
         )}
       </div>
@@ -240,6 +270,18 @@ export function LeadIntelligence({
         onSort={toggleSort}
         onPageChange={setPage}
       />
+
+      <FilterDrawer
+        open={showFilters}
+        onClose={() => setShowFilters(false)}
+        initial={drawerFilters}
+        collapsedByDefault={embedded}
+        onApply={(filters) => {
+          setDrawerFilters(filters);
+          setPage(1);
+          setShowFilters(false);
+        }}
+      />
     </div>
   );
 }
@@ -247,13 +289,14 @@ export function LeadIntelligence({
 // ── View header (page variant only) ──────────────────────────────────────────
 
 function ViewHeader({
-  view, setView, total, selectedCount, onExport,
+  view, setView, total, selectedCount, onExport, isExporting,
 }: {
   view: 'table' | 'kanban';
   setView: (v: 'table' | 'kanban') => void;
   total: number;
   selectedCount: number;
   onExport: () => void;
+  isExporting: boolean;
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -268,10 +311,11 @@ function ViewHeader({
       <div className="flex items-center gap-2">
         <button
           onClick={onExport}
+          disabled={isExporting}
           className="flex items-center gap-1.5 rounded-lg border border-ink/[0.14] bg-surface px-3.5 py-2 font-mono text-[11px] font-500 text-ink/70 transition-colors hover:border-ink/30 hover:text-ink hover:bg-ink/[0.04]"
         >
           <Download className="h-3.5 w-3.5" />
-          Export
+          {isExporting ? 'Exporting' : 'Export'}
         </button>
 
         <div className="flex rounded-lg border border-ink/[0.14] bg-surface overflow-hidden">

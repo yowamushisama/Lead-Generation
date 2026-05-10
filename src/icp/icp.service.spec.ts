@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ICPService } from './icp.service';
 import { IcpProfileRepository } from '../database/repositories/icp-profile.repository';
+import { IcpProfileChangeLogRepository } from '../database/repositories/icp-profile-change-log.repository';
 import { LeadRepository } from '../database/repositories/lead.repository';
+import { PrismaService } from '../database/prisma.service';
+import { AIProviderFactory } from '../ai/ai-provider.factory';
 
 const mockIcpProfileRepository = {
   create: jest.fn(),
@@ -13,6 +16,24 @@ const mockIcpProfileRepository = {
 
 const mockLeadRepository = {
   count: jest.fn(),
+};
+
+const mockChangeLogRepository = {
+  createMany: jest.fn().mockResolvedValue(undefined),
+};
+
+// $transaction calls the callback synchronously with a fake tx object that
+// has iCPProfile.update so the service can use tx.iCPProfile.update inside it.
+const mockTx = {
+  iCPProfile: { update: jest.fn() },
+  iCPProfileChangeLog: { createMany: jest.fn() },
+};
+const mockPrisma = {
+  $transaction: jest.fn().mockImplementation((fn: (tx: typeof mockTx) => unknown) => fn(mockTx)),
+};
+
+const mockAiFactory = {
+  getProvider: jest.fn(),
 };
 
 const tenant = { organizationId: 'org-1', userId: 'user-1', role: 'admin' };
@@ -53,11 +74,18 @@ describe('ICPService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
+    // Reset the transaction mock's inner tx methods between tests.
+    mockTx.iCPProfile.update.mockResolvedValue(profileRow);
+    mockTx.iCPProfileChangeLog.createMany.mockResolvedValue({ count: 0 });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ICPService,
         { provide: IcpProfileRepository, useValue: mockIcpProfileRepository },
+        { provide: IcpProfileChangeLogRepository, useValue: mockChangeLogRepository },
         { provide: LeadRepository, useValue: mockLeadRepository },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: AIProviderFactory, useValue: mockAiFactory },
       ],
     }).compile();
 
@@ -117,11 +145,11 @@ describe('ICPService', () => {
   describe('update', () => {
     it('updates name without bumping version', async () => {
       mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
-      mockIcpProfileRepository.update.mockResolvedValue({ ...profileRow, name: 'Renamed' });
+      mockTx.iCPProfile.update.mockResolvedValue({ ...profileRow, name: 'Renamed' });
 
       const result = await service.update(tenant as any, 'icp-1', { name: 'Renamed' });
 
-      expect(mockIcpProfileRepository.update).toHaveBeenCalledWith(
+      expect(mockTx.iCPProfile.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ name: 'Renamed' }) }),
       );
       expect(result.name).toBe('Renamed');
@@ -129,15 +157,68 @@ describe('ICPService', () => {
 
     it('bumps version when config is updated', async () => {
       mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
-      mockIcpProfileRepository.update.mockResolvedValue({ ...profileRow, version: 2 });
+      mockTx.iCPProfile.update.mockResolvedValue({ ...profileRow, version: 2 });
 
       await service.update(tenant as any, 'icp-1', { config: { ...config, targetRoles: ['CMO'] } });
 
-      expect(mockIcpProfileRepository.update).toHaveBeenCalledWith(
+      expect(mockTx.iCPProfile.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ version: { increment: 1 } }),
         }),
       );
+    });
+
+    it('writes a config change log entry when config blob changes', async () => {
+      // When profileRow has a non-empty top-level targetIndustries column, resolveICPField
+      // returns that value (top-level wins), so only the raw 'config' blob diff is recorded.
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
+      mockTx.iCPProfile.update.mockResolvedValue({ ...profileRow, version: 2 });
+
+      await service.update(tenant as any, 'icp-1', {
+        config: { ...config, targetIndustries: ['FinTech'] },
+      });
+
+      expect(mockChangeLogRepository.createMany).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining([
+          expect.objectContaining({ fieldName: 'config' }),
+        ]),
+      );
+    });
+
+    it('writes a targetIndustries change log entry when top-level column has no prior value', async () => {
+      // When the top-level column is empty, resolveICPField falls back to config.*,
+      // so a change to config.targetIndustries IS captured as a targeted fieldName diff.
+      const profileWithoutTopLevel = {
+        ...profileRow,
+        targetIndustries: [],
+        targetLocations: [],
+        buyerSignals: [],
+        urgencySignals: [],
+      };
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileWithoutTopLevel);
+      mockTx.iCPProfile.update.mockResolvedValue({ ...profileWithoutTopLevel, version: 2 });
+
+      await service.update(tenant as any, 'icp-1', {
+        config: { ...config, targetIndustries: ['FinTech'] },
+      });
+
+      expect(mockChangeLogRepository.createMany).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining([
+          expect.objectContaining({ fieldName: 'targetIndustries' }),
+        ]),
+      );
+    });
+
+    it('does not write change log when only name changes', async () => {
+      mockIcpProfileRepository.findFirst.mockResolvedValue(profileRow);
+      mockTx.iCPProfile.update.mockResolvedValue({ ...profileRow, name: 'New Name' });
+      mockChangeLogRepository.createMany.mockClear();
+
+      await service.update(tenant as any, 'icp-1', { name: 'New Name' });
+
+      expect(mockChangeLogRepository.createMany).not.toHaveBeenCalled();
     });
   });
 

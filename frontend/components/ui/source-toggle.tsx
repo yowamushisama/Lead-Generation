@@ -2,13 +2,13 @@
 
 import { cn } from '@/lib/utils';
 
-export type SourceTab = 'all' | 'linkedin' | 'google_maps' | 'csv' | 'webhook';
+export type SourceTab = 'all' | 'linkedin' | 'google_maps' | 'csv_import' | 'webhook';
 
 const TABS: { id: SourceTab; label: string; abbr: string }[] = [
   { id: 'all',         label: 'All Sources',  abbr: 'ALL' },
   { id: 'linkedin',    label: 'LinkedIn',     abbr: 'IN' },
   { id: 'google_maps', label: 'Google Maps',  abbr: 'MAPS' },
-  { id: 'csv',         label: 'CSV Import',   abbr: 'CSV' },
+  { id: 'csv_import',  label: 'CSV Import',   abbr: 'CSV' },
   { id: 'webhook',     label: 'Webhook',      abbr: 'WH' },
 ];
 

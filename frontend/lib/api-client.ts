@@ -50,6 +50,22 @@ function unwrap<T>(response: ApiResponse<T>): T {
   return response.data;
 }
 
+type LeadListParams = Partial<LeadFilters> & {
+  page?: number;
+  skip?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  /** Comma-separated LeadStatus[] for multi-select filtering */
+  statuses?: string;
+  /** Comma-separated LeadTier[] for multi-select filtering */
+  tiers?: string;
+  /** Comma-separated LeadSource[] for multi-select filtering */
+  sources?: string;
+};
+
+type LeadListResult = { data: Lead[]; total: number };
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const auth = {
   login: (email: string, password: string) =>
@@ -72,7 +88,7 @@ export const auth = {
 
 // ── Leads ─────────────────────────────────────────────────────────────────────
 export const leads = {
-  list: (params?: Partial<LeadFilters> & { page?: number; skip?: number; limit?: number }) => {
+  list: (params?: LeadListParams): Promise<LeadListResult> => {
     const normalizedParams =
       params?.skip !== undefined && params?.limit
         ? {
@@ -87,6 +103,20 @@ export const leads = {
     )
       .then(unwrap)
       .then((payload) => ({ data: payload.data, total: payload.meta.total }));
+  },
+
+  listAll: async (params?: Omit<LeadListParams, 'page' | 'skip' | 'limit'>): Promise<Lead[]> => {
+    const limit = 500;
+    const first = await leads.list({ ...params, page: 1, limit });
+    const rows = [...first.data];
+
+    for (let page = 2; rows.length < first.total; page++) {
+      const next = await leads.list({ ...params, page, limit });
+      if (next.data.length === 0) break;
+      rows.push(...next.data);
+    }
+
+    return rows;
   },
 
   get: (id: string) =>

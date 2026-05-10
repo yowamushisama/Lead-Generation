@@ -273,7 +273,11 @@ export class CampaignRunnerService {
           locations,
           industries,
           ignoreExhausted: trigger === 'manual',
-          ...(isGmaps ? { statsCollector, cancellationSignal } : {}),
+          ...(isGmaps ? {
+            statsCollector,
+            cancellationSignal,
+            fastScrollEnabled: settings.gmapsFastScrollEnabled === true,
+          } : {}),
         };
 
         // Phase 1: persist all scraped leads before enqueuing any.
