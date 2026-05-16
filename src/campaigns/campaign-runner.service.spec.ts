@@ -25,8 +25,10 @@ function buildService(overrides: {
   collect?: () => AsyncGenerator<any>;
   ingestRawLead?: jest.Mock;
   enqueuePersistedLead?: jest.Mock;
+  adapter?: Record<string, unknown>;
+  campaign?: Record<string, unknown>;
 } = {}) {
-  const adapter = {
+  const adapter = overrides.adapter ?? {
     name: 'linkedin',
     sourceType: 'intent',
     isHealthy: jest.fn().mockResolvedValue(true),
@@ -36,7 +38,7 @@ function buildService(overrides: {
   };
 
   const campaignRepository = {
-    findFirst: jest.fn().mockResolvedValue(campaignRow),
+    findFirst: jest.fn().mockResolvedValue(overrides.campaign ?? campaignRow),
   };
   const adapterRegistry = {
     has: jest.fn().mockReturnValue(true),
@@ -147,6 +149,134 @@ describe('CampaignRunnerService', () => {
     expect(result.duplicatesAtIngestion).toBe(1);
     expect(result.enqueued).toBe(0);
     expect(orchestrator.enqueuePersistedLead).not.toHaveBeenCalled();
+  });
+
+  it('forwards enabled ICP Google Maps filters to the Google Maps adapter', async () => {
+    let receivedConfig: Record<string, unknown> | undefined;
+    const adapter = {
+      name: 'google_maps',
+      sourceType: 'discovery',
+      isHealthy: jest.fn().mockResolvedValue(true),
+      collect: async function* (config: Record<string, unknown>) {
+        receivedConfig = config;
+      },
+    };
+    const campaign = {
+      ...campaignRow,
+      settings: { targetSources: ['google_maps'] },
+      keywords: [],
+      targetLocations: ['Austin'],
+      targetIndustries: ['Dental'],
+      icpProfile: {
+        targetLocations: [],
+        targetIndustries: [],
+        config: {
+          targetLocations: ['Austin'],
+          targetIndustries: ['Dental'],
+          sourceFilters: {
+            googleMaps: {
+              enabled: true,
+              minRating: 4,
+              minReviewCount: 20,
+              websitePresence: 'none_or_social_only',
+            },
+          },
+        },
+      },
+    };
+
+    const { service } = buildService({ adapter, campaign });
+
+    await service.runCampaign(tenant as any, 'camp-1', 'manual');
+
+    expect(receivedConfig?.gmapsFilters).toEqual({
+      minRating: 4,
+      minReviewCount: 20,
+      websitePresence: 'none_or_social_only',
+    });
+  });
+
+  it('passes target industries to discovery adapters latest-first', async () => {
+    let receivedConfig: Record<string, unknown> | undefined;
+    const adapter = {
+      name: 'google_maps',
+      sourceType: 'discovery',
+      isHealthy: jest.fn().mockResolvedValue(true),
+      collect: async function* (config: Record<string, unknown>) {
+        receivedConfig = config;
+      },
+    };
+    const targetIndustries = [
+      'industrial equipment supporter',
+      'oilfield manufacturer',
+      'polymer manufacturer',
+      'agricutural equipment dealer',
+      'livestock equipment dealer',
+      'fertilizer distributer export',
+      'lumber exporter',
+      'sawmill export',
+      'wood products manufacturer',
+    ];
+
+    const { service } = buildService({
+      adapter,
+      campaign: {
+        ...campaignRow,
+        settings: { targetSources: ['google_maps'] },
+        targetLocations: ['Austin'],
+        targetIndustries,
+      },
+    });
+
+    await service.runCampaign(tenant as any, 'camp-1', 'manual');
+
+    expect(receivedConfig?.industries).toEqual([...targetIndustries].reverse());
+    expect((receivedConfig?.industries as string[])[0]).toBe('wood products manufacturer');
+  });
+
+  it('omits Google Maps filters when sourceFilters are disabled or absent', async () => {
+    const configs: Array<Record<string, unknown>> = [];
+    const adapter = {
+      name: 'google_maps',
+      sourceType: 'discovery',
+      isHealthy: jest.fn().mockResolvedValue(true),
+      collect: async function* (config: Record<string, unknown>) {
+        configs.push(config);
+      },
+    };
+    const baseGmapsCampaign = {
+      ...campaignRow,
+      settings: { targetSources: ['google_maps'] },
+      keywords: [],
+      targetLocations: ['Austin'],
+      targetIndustries: ['Dental'],
+    };
+
+    await buildService({
+      adapter,
+      campaign: {
+        ...baseGmapsCampaign,
+        icpProfile: {
+          targetLocations: [],
+          targetIndustries: [],
+          config: {
+            sourceFilters: { googleMaps: { enabled: false, minRating: 4 } },
+          },
+        },
+      },
+    }).service.runCampaign(tenant as any, 'camp-1', 'manual');
+
+    await buildService({
+      adapter,
+      campaign: {
+        ...baseGmapsCampaign,
+        icpProfile: { targetLocations: [], targetIndustries: [], config: {} },
+      },
+    }).service.runCampaign(tenant as any, 'camp-1', 'manual');
+
+    expect(configs).toHaveLength(2);
+    expect(configs[0]).not.toHaveProperty('gmapsFilters');
+    expect(configs[1]).not.toHaveProperty('gmapsFilters');
   });
 
   it('stops consuming after goalMaxLeads saved leads reached', async () => {

@@ -1,6 +1,12 @@
 import { GmapsScrapeRunLogRepository, ProbeStats } from '../../database/repositories/gmaps-scrape-run-log.repository';
+import { GmapsFilterReason } from './gmaps-filter';
 
 export { ProbeStats };
+
+interface FilterStats {
+  totalFilteredPlaces: number;
+  byReason: Record<GmapsFilterReason, number>;
+}
 
 interface QueryStats {
   logId: string;
@@ -12,6 +18,7 @@ interface QueryStats {
   extractionFailures: number;
   candidatesExtracted: number;
   probe?: ProbeStats;
+  filterStats?: FilterStats;
 }
 
 export interface GmapsRunStatsCollector {
@@ -29,6 +36,8 @@ export interface GmapsRunStatsCollector {
   recordExtractionFailure(logId: string, n: number): void;
   recordCandidateExtracted(logId: string): void;
   recordProbeResult(logId: string, stats: ProbeStats): void;
+  /** Record a filtered-out place. totalFilteredPlaces increments once; each reason increments independently. */
+  recordFilteredOut(logId: string, reasons: GmapsFilterReason[]): void;
   finishQuery(logId: string, endReason: string, errorSummary?: string): Promise<void>;
   getTotalDuplicatesAtAdapter(): number;
 }
@@ -105,6 +114,16 @@ export class GmapsRunStatsCollectorImpl implements GmapsRunStatsCollector {
     if (s) s.probe = stats;
   }
 
+  recordFilteredOut(logId: string, reasons: GmapsFilterReason[]): void {
+    const s = this.queries.get(logId);
+    if (!s) return;
+    if (!s.filterStats) {
+      s.filterStats = { totalFilteredPlaces: 0, byReason: { rating: 0, reviews: 0, years: 0, website: 0 } };
+    }
+    s.filterStats.totalFilteredPlaces++;
+    for (const r of reasons) s.filterStats.byReason[r]++;
+  }
+
   async finishQuery(logId: string, endReason: string, errorSummary?: string): Promise<void> {
     const s = this.queries.get(logId);
     if (!s) return;
@@ -124,6 +143,7 @@ export class GmapsRunStatsCollectorImpl implements GmapsRunStatsCollector {
       endReason,
       errorSummary,
       probeStats: s.probe,
+      filterStats: s.filterStats,
     });
     this.queries.delete(logId);
   }

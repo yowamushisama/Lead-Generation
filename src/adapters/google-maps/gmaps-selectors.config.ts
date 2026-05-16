@@ -50,6 +50,9 @@ export interface GmapsSelectors {
   /** Category/type within a listing card (tile view) */
   tileCategory: string[];
 
+  /** Website link/button within a listing card (tile view) */
+  tileWebsite: string[];
+
   /** After clicking a card: wait for the detail panel to load */
   waitForDetail: string;
 
@@ -70,6 +73,12 @@ export interface GmapsSelectors {
 
   /** Website link in the detail panel */
   detailWebsite: string[];
+
+  /**
+   * Candidate elements whose text may contain "X years in business".
+   * Matched with /(\d+)\+?\s+years?\s+in\s+business/i — best-effort, may be null.
+   */
+  detailYearsInBusinessCandidates: string[];
 
   /** Phone number element/button in the detail panel */
   detailPhone: string[];
@@ -141,6 +150,13 @@ export const GMAPS_SELECTORS: GmapsSelectors = {
     'span[class*="type"]',
   ],
 
+  tileWebsite: [
+    'a[data-value="Website"][href]',
+    'a[aria-label^="Visit "][href]',
+    'a[aria-label*="website" i][href]',
+    'a[data-tooltip="Open website"][href]',
+  ],
+
   // ── Detail panel (after click) ───────────────────────────────────────────────
   waitForDetail: 'h1.DUwDvf, h1[class*="DUwDvf"], .lMbq3e h2',
 
@@ -181,6 +197,15 @@ export const GMAPS_SELECTORS: GmapsSelectors = {
     'a[data-item-id="authority"]',
     'a[href][data-tooltip="Open website"]',
     'a[href^="http"][jsaction*="website"]',
+  ],
+
+  detailYearsInBusinessCandidates: [
+    '.RcCsl span',               // attribute chips
+    '.Io6YTe',                   // info rows
+    '.iP2t7d',                   // about section items
+    '[aria-label*="year"]',      // aria-labeled chips
+    '.e2moi span',               // alternate chip container
+    'li.hpLkke',                 // list items in about panel
   ],
 
   detailPhone: [

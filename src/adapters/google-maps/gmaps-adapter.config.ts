@@ -1,5 +1,6 @@
 import { AdapterConfig } from '../../common/interfaces/adapter.interface';
 import { GmapsRunStatsCollector } from './gmaps-run-stats.collector';
+import { GmapsFilters } from '../../common/types/icp.types';
 
 export interface CancellationSignal {
   reason: 'RUN_GOAL_REACHED' | 'RUN_SAFETY_LIMIT' | 'CANCELLED_BY_RUNNER' | null;
@@ -23,6 +24,8 @@ export interface GmapsAdapterConfig extends AdapterConfig {
   maxExtractPhaseMs?: number;
   /** Enable fast-scroll probe for this run (overrides env flag when true). Default: false. */
   fastScrollEnabled?: boolean;
+  /** ICP Google Maps quality filters forwarded from ICP sourceFilters.googleMaps (enabled=true only). */
+  gmapsFilters?: GmapsFilters;
 }
 
 export const GMAPS_PROFILE_KEY = 'gmaps';

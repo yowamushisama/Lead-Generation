@@ -22,8 +22,8 @@
 
   /* Neutral text */
   --color-ink:   #F1F5F9;
-  --color-mist:  #94A3B8;
-  --color-dusk:  #475569;
+  --color-mist:  #A8B8CC;
+  --color-dusk:  #8899B2;
   --color-abyss: #1E293B;
 
   /* Fonts — reference CSS vars set by next/font in layout.tsx */
@@ -52,6 +52,7 @@ html {
 
 body {
   height: 100%;
+  overflow-x: hidden;
   background-color: #0A0A0F;
   background-image:
     radial-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px);

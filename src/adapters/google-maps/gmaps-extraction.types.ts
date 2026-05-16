@@ -9,6 +9,7 @@ export interface GmapsPlace {
   address: string | null;
   phone: string | null;
   website: string | null;
+  yearsInBusiness: number | null;
   businessHours: Record<string, string> | null;
   lastReviewAt: string | null;
   socialHandles: { instagram?: string; facebook?: string; tiktok?: string };

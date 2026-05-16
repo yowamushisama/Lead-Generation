@@ -68,9 +68,34 @@ export class ICPService {
   async update(tenant: TenantContext, id: string, dto: UpdateICPDto) {
     const existing = await this.findOne(tenant, id);
 
-    const mergedConfig = dto.config !== undefined
-      ? { ...(existing.config as object ?? {}), ...dto.config }
-      : existing.config;
+    // Shallow-merge config, but deep-merge sourceFilters.googleMaps to avoid clobbering
+    // unrelated per-source blocks when only one filter field is updated.
+    let mergedConfig: object;
+    if (dto.config !== undefined) {
+      const existingConfig = (existing.config as Record<string, unknown>) ?? {};
+      const patchConfig = dto.config as Record<string, unknown>;
+      const mergedSourceFilters =
+        patchConfig['sourceFilters'] !== undefined
+          ? {
+              ...((existingConfig['sourceFilters'] as Record<string, unknown>) ?? {}),
+              ...((patchConfig['sourceFilters'] as Record<string, unknown>) ?? {}),
+              googleMaps:
+                (patchConfig['sourceFilters'] as any)?.googleMaps !== undefined
+                  ? {
+                      ...((existingConfig['sourceFilters'] as any)?.googleMaps ?? {}),
+                      ...((patchConfig['sourceFilters'] as any).googleMaps ?? {}),
+                    }
+                  : (existingConfig['sourceFilters'] as any)?.googleMaps,
+            }
+          : existingConfig['sourceFilters'];
+      mergedConfig = {
+        ...existingConfig,
+        ...patchConfig,
+        ...(mergedSourceFilters !== undefined ? { sourceFilters: mergedSourceFilters } : {}),
+      };
+    } else {
+      mergedConfig = existing.config as object ?? {};
+    }
 
     const updateData: Record<string, unknown> = {};
     if (dto.name !== undefined) updateData.name = dto.name;
@@ -87,6 +112,13 @@ export class ICPService {
     const simulatedAfter = { ...existing, ...updateData, config: mergedConfig };
     const tracked = ['targetIndustries', 'targetLocations', 'buyerSignals', 'urgencySignals'];
     const changes = diffICPFields(existing, simulatedAfter, tracked);
+
+    // Diff sourceFilters.googleMaps with a one-off explicit path (resolveICPField only does top-level).
+    const prevGmaps = (existing.config as any)?.sourceFilters?.googleMaps;
+    const nextGmaps = (mergedConfig as any)?.sourceFilters?.googleMaps;
+    if (JSON.stringify(prevGmaps) !== JSON.stringify(nextGmaps)) {
+      changes.push({ field: 'sourceFilters.googleMaps', before: prevGmaps ?? null, after: nextGmaps ?? null });
+    }
 
     // Also log raw config blob if it changed (fieldName='config' gives a full before/after snapshot).
     if (dto.config !== undefined && JSON.stringify(existing.config) !== JSON.stringify(mergedConfig)) {

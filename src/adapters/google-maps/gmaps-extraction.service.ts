@@ -104,6 +104,19 @@ export class GmapsExtractionService {
       const websiteEl = firstMatch(document, sel.detailWebsite) as HTMLAnchorElement | null;
       const website = websiteEl?.href ?? null;
 
+      // ── Years in business (best-effort, passive — no tab clicks) ─────────────
+      let yearsInBusiness: number | null = null;
+      try {
+        const yibCandidates = (sel as any).detailYearsInBusinessCandidates as string[];
+        const yibEls = firstMatchAll(document, yibCandidates);
+        const yibPattern = /(\d+)\+?\s+years?\s+in\s+business/i;
+        for (const el of yibEls) {
+          const t = (el.textContent ?? '') + ' ' + (el.getAttribute('aria-label') ?? '');
+          const m = t.match(yibPattern);
+          if (m) { yearsInBusiness = parseInt(m[1], 10); break; }
+        }
+      } catch { /* never throws */ }
+
       // ── Phone ─────────────────────────────────────────────────────────────────
       const phoneEl = firstMatch(document, sel.detailPhone);
       const phone =
@@ -161,6 +174,7 @@ export class GmapsExtractionService {
         category,
         address: address || null,
         website,
+        yearsInBusiness,
         phone: phone || null,
         businessHours,
         lastReviewRaw,
@@ -187,6 +201,7 @@ export class GmapsExtractionService {
       address: raw.address,
       phone: raw.phone,
       website: raw.website,
+      yearsInBusiness: raw.yearsInBusiness ?? null,
       businessHours: raw.businessHours,
       lastReviewAt,
       socialHandles,
@@ -243,7 +258,7 @@ export class GmapsExtractionService {
    * Extract tile-level data for all currently-visible listing cards without
    * clicking into each one. Used when `fetchDetails=false`.
    */
-  async extractTiles(page: Page): Promise<Array<{ name: string; rating: number | null; reviewCount: number | null; category: string | null; url: string }>> {
+  async extractTiles(page: Page): Promise<Array<{ name: string; rating: number | null; reviewCount: number | null; category: string | null; website: string | null; url: string }>> {
     return (page as any).evaluate((sel: GmapsSelectors) => {
       function firstMatch(parent: Element | Document, selectors: string[]): Element | null {
         for (const s of selectors) {
@@ -253,6 +268,17 @@ export class GmapsExtractionService {
       }
 
       function text(el: Element | null): string { return el?.textContent?.trim() ?? ''; }
+
+      function websiteHref(tile: Element): string | null {
+        const websiteEl = firstMatch(tile, sel.tileWebsite) as HTMLAnchorElement | null;
+        const href = websiteEl?.href ?? null;
+        if (!href) return null;
+        try {
+          const url = new URL(href);
+          if (url.hostname.includes('google.') && url.pathname.includes('/maps/')) return null;
+        } catch { /* keep raw href */ }
+        return href;
+      }
 
       const tiles: Element[] = (() => {
         for (const s of sel.listingCards) {
@@ -271,12 +297,13 @@ export class GmapsExtractionService {
         const categoryText = text(firstMatch(tile, sel.tileCategory));
         const a = tile.tagName === 'A' ? tile : tile.querySelector('a[href*="/maps/place/"]');
         const href = (a as HTMLAnchorElement | null)?.href ?? '';
+        const website = websiteHref(tile);
 
         const reviewMatch = reviewText.replace(/[(),]/g, '').match(/[\d,]+/);
         const reviewCount = reviewMatch ? parseInt(reviewMatch[0].replace(/,/g, ''), 10) : null;
         const rating = ratingText ? parseFloat(ratingText) : null;
 
-        return { name: nameText || 'Unknown', rating, reviewCount, category: categoryText || null, url: href };
+        return { name: nameText || 'Unknown', rating, reviewCount, category: categoryText || null, website, url: href };
       }).filter((t) => t.url);
     }, GMAPS_SELECTORS as unknown as GmapsSelectors);
   }

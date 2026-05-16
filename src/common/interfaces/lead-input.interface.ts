@@ -14,6 +14,7 @@ export interface RawLeadInput {
   email?: string;
   phone?: string;
   website?: string;
+  hasMeaningfulWebsite?: boolean;
   originalContent?: string;
   metadata?: Record<string, unknown>;
 }

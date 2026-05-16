@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Target, ChevronDown, ChevronRight, X, Sparkles, Loader2, Pencil } from 'lucide-react';
+import { Plus, Target, ChevronDown, ChevronRight, X, Sparkles, Loader2, Pencil, Map } from 'lucide-react';
 import { icp as icpApi } from '@/lib/api-client';
-import type { ICPProfile, ICPConfig } from '@/models';
+import type { ICPProfile, ICPConfig, GmapsFiltersWithEnabled, WebsitePresenceMode } from '@/models';
 import { Card } from '@/components/ui/card';
 import { TagInput } from '@/components/ui/tag-input';
 import { cn, mergeUnique } from '@/lib/utils';
@@ -53,15 +53,8 @@ export function ICPBuilder() {
     setExpandedId(null);
     setNewName(profile.name);
     setNewIsActive(profile.isActive);
-    setNewConfig({
-      targetRoles:      profile.config?.targetRoles      ?? [],
-      targetIndustries: profile.config?.targetIndustries ?? [],
-      targetStages:     profile.config?.targetStages     ?? [],
-      targetLocations:  profile.config?.targetLocations  ?? [],
-      buyerSignals:     profile.config?.buyerSignals     ?? [],
-      urgencySignals:   profile.config?.urgencySignals   ?? [],
-      budgetSignals:    profile.config?.budgetSignals    ?? [],
-    });
+    // Spread full config so sourceFilters (and any future keys) are preserved.
+    setNewConfig({ ...EMPTY_CONFIG, ...profile.config });
   };
 
   // ── AI enhance — merges suggestions into existing fields ────────────────────
@@ -73,6 +66,7 @@ export function ICPBuilder() {
     try {
       const suggested = await icpApi.enhance(newName.trim());
       setNewConfig((prev) => ({
+        ...prev,  // preserves sourceFilters and any future per-source keys
         targetRoles:      mergeUnique(prev.targetRoles      ?? [], suggested.targetRoles),
         targetIndustries: mergeUnique(prev.targetIndustries ?? [], suggested.targetIndustries),
         targetLocations:  mergeUnique(prev.targetLocations  ?? [], suggested.targetLocations),
@@ -89,6 +83,25 @@ export function ICPBuilder() {
     } finally {
       setIsEnhancing(false);
     }
+  };
+
+  // ── Google Maps filter helpers ───────────────────────────────────────────────
+
+  const gmapsFilters = newConfig.sourceFilters?.googleMaps;
+  const gmapsEnabled = gmapsFilters?.enabled ?? false;
+
+  const updateGmapsFilters = (partial: Partial<GmapsFiltersWithEnabled>) => {
+    setNewConfig((prev) => ({
+      ...prev,
+      sourceFilters: {
+        ...prev.sourceFilters,
+        googleMaps: {
+          enabled: false,
+          ...prev.sourceFilters?.googleMaps,
+          ...partial,
+        },
+      },
+    }));
   };
 
   // ── Data & mutations ────────────────────────────────────────────────────────
@@ -294,6 +307,123 @@ export function ICPBuilder() {
               </span>
               <span className="font-mono text-[10px] text-mist">points possible</span>
             </div>
+          </div>
+
+          {/* Google Maps source-specific targeting */}
+          <div className="mt-4 border-t border-ink/[0.06] pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Map className="h-3.5 w-3.5 text-mist" />
+                <h3 className="font-display text-[12px] font-600 text-ink">Google Maps Targeting</h3>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <span className="font-mono text-[10px] text-mist">Enable filters</span>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={gmapsEnabled}
+                    onChange={(e) => updateGmapsFilters({ enabled: e.target.checked })}
+                    className="sr-only"
+                  />
+                  <div
+                    className={cn(
+                      'h-4 w-7 rounded-full transition-colors',
+                      gmapsEnabled ? 'bg-aqua' : 'bg-ink/20',
+                    )}
+                  />
+                  <div
+                    className={cn(
+                      'absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform shadow-sm',
+                      gmapsEnabled ? 'translate-x-3.5' : 'translate-x-0.5',
+                    )}
+                  />
+                </div>
+              </label>
+            </div>
+
+            {gmapsEnabled && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 rounded-lg border border-aqua/10 bg-aqua/[0.02] p-3">
+                {/* Min rating */}
+                <div>
+                  <label className="section-label mb-1 block">Min Rating</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={5}
+                    step={0.1}
+                    value={gmapsFilters?.minRating ?? ''}
+                    onChange={(e) => updateGmapsFilters({ minRating: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    placeholder="e.g. 3.9"
+                    className="w-full rounded-lg border border-ink/[0.06] bg-elevated px-3 py-1.5 font-mono text-[12px] text-ink focus:border-aqua/30 focus:outline-none placeholder:text-dusk"
+                  />
+                </div>
+
+                {/* Min reviews */}
+                <div>
+                  <label className="section-label mb-1 block">Min Reviews</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={gmapsFilters?.minReviewCount ?? ''}
+                    onChange={(e) => updateGmapsFilters({ minReviewCount: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+                    placeholder="e.g. 10"
+                    className="w-full rounded-lg border border-ink/[0.06] bg-elevated px-3 py-1.5 font-mono text-[12px] text-ink focus:border-aqua/30 focus:outline-none placeholder:text-dusk"
+                  />
+                </div>
+
+                {/* Min years in business */}
+                <div>
+                  <label className="section-label mb-1 block">Min Years in Business</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={gmapsFilters?.minYearsInBusiness ?? ''}
+                    onChange={(e) => updateGmapsFilters({ minYearsInBusiness: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+                    placeholder="e.g. 2"
+                    className="w-full rounded-lg border border-ink/[0.06] bg-elevated px-3 py-1.5 font-mono text-[12px] text-ink focus:border-aqua/30 focus:outline-none placeholder:text-dusk"
+                  />
+                  <p className="mt-0.5 font-mono text-[10px] text-dusk">Strict — leads without a confirmed value are excluded. Expect higher drop rate.</p>
+                </div>
+
+                {/* Website presence */}
+                <div>
+                  <label className="section-label mb-1 block">Website Presence</label>
+                  <div className="flex flex-col gap-1">
+                    {(
+                      [
+                        { value: 'any', label: 'Any', desc: 'No website filter' },
+                        { value: 'none', label: 'No website', desc: 'Only businesses with no website' },
+                        { value: 'none_or_social_only', label: 'None or social-only', desc: 'No website or only Facebook/Instagram/etc.' },
+                      ] as { value: WebsitePresenceMode; label: string; desc: string }[]
+                    ).map(({ value, label, desc }) => (
+                      <label key={value} className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="websitePresence"
+                          value={value}
+                          checked={(gmapsFilters?.websitePresence ?? 'any') === value}
+                          onChange={() => updateGmapsFilters({ websitePresence: value })}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-mono text-[11px] text-ink">{label}</span>
+                          <span className="block font-mono text-[10px] text-dusk">{desc}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {(gmapsFilters?.websitePresence === 'none' || gmapsFilters?.websitePresence === 'none_or_social_only') && (
+                    <p className="mt-1 font-mono text-[10px] text-amber-400/80">Requires detail extraction — scraping will be slower.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!gmapsEnabled && (
+              <p className="font-mono text-[10px] text-dusk">Enable to filter Google Maps leads by rating, review count, business age, and website presence.</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-ink/[0.06]">

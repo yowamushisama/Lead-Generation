@@ -264,6 +264,7 @@ export function LeadIntelligence({
         total={total}
         pageSize={PAGE_SIZE}
         campaignId={campaignId}
+        hasFilters={activeFilterCount > 0 || !!searchTerm}
         onToggleAll={toggleAll}
         onSelect={toggleSelect}
         onStatusChange={(id, status) => updateMutation.mutate({ id, status })}

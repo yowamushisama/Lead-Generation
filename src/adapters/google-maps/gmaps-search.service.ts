@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Page } from 'playwright';
 import { AppLogger } from '../../common/utils/logger.util';
 import { PlaywrightStealthService } from '../shared/playwright-stealth.service';
-import { GMAPS_SELECTORS } from './gmaps-selectors.config';
+import { GMAPS_SELECTORS, type GmapsSelectors } from './gmaps-selectors.config';
 import { scrollPage } from '../shared/page-helpers';
 import { GMAPS_PROFILE_KEY } from './gmaps-adapter.config';
 import { gmapsListingKey } from './gmaps-listing-key';
@@ -19,12 +19,23 @@ export interface FastScrollResult {
   mode: FastScrollMode;
   /** gmapsListingKey values already in cursor data — safe to seed scrollUntilStable's seenInSession. */
   knownDuplicateKeys: Set<string>;
-  /** URLs observed by probe whose key was NOT in cursor data — must flow through normal extraction. */
-  freshProbeUrls: string[];
+  /**
+   * Listing summaries observed by probe whose key was NOT in cursor data.
+   * The adapter seeds their keys into scrollUntilStable so the main scroll does not re-emit them,
+   * and is responsible for applying listing-stage filters and adding URLs to collectedUrls.
+   */
+  freshProbeListings: GmapsListingSummary[];
   probeSeenCount: number;
   hitRate: number;
   reason: string;
   scrolls: number;
+}
+
+export interface GmapsListingSummary {
+  name: string;
+  url: string;
+  website: string | null;
+  hasWebsite: boolean;
 }
 
 @Injectable()
@@ -96,15 +107,16 @@ export class GmapsSearchService {
    * Returns the stop reason: 'END_OF_FEED' | 'MAX_SCROLLS' | 'CALLER_STOP'.
    *
    * @param opts.seedSeenInSession - gmapsListingKey values to pre-populate seenInSession with.
-   *   Only pass KNOWN-DUPLICATE keys here (e.g. knownDuplicateKeys from fastScrollProbe).
-   *   Never pass freshProbeUrls keys — those must flow through extraction.
+   *   Pass knownDuplicateKeys from fastScrollProbe AND the keys of freshProbeListings — the probe
+   *   already handled those listings, so the main scroll must not re-emit them. The adapter is
+   *   responsible for routing freshProbeListings URLs into collectedUrls separately.
    */
   async scrollUntilStable(
     page: Page,
     opts: {
       maxScrolls: number;
       idleScrollsBeforeStop: number;
-      onBatch: (newUrls: string[]) => { stop: boolean; reason?: string } | Promise<{ stop: boolean; reason?: string }>;
+      onBatch: (newUrls: string[], newListings?: GmapsListingSummary[]) => { stop: boolean; reason?: string } | Promise<{ stop: boolean; reason?: string }>;
       onScrollStep?: () => void;
       seedSeenInSession?: Set<string>;
     },
@@ -128,8 +140,9 @@ export class GmapsSearchService {
 
       if (opts.onScrollStep) opts.onScrollStep();
 
-      const allUrls = await this.collectListingUrls(page);
-      const newUrls = allUrls.filter((u) => !seenInSession.has(gmapsListingKey(u)));
+      const allListings = await this.collectListingSummaries(page);
+      const newListings = allListings.filter((listing) => !seenInSession.has(gmapsListingKey(listing.url)));
+      const newUrls = newListings.map((listing) => listing.url);
       for (const u of newUrls) seenInSession.add(gmapsListingKey(u));
 
       if (newUrls.length === 0) {
@@ -139,7 +152,7 @@ export class GmapsSearchService {
       }
       consecutiveIdle = 0;
 
-      const result = await opts.onBatch(newUrls);
+      const result = await opts.onBatch(newUrls, newListings);
       if (result.stop) return result.reason ?? 'CALLER_STOP';
     }
 
@@ -151,8 +164,42 @@ export class GmapsSearchService {
    * Returns hrefs pointing to individual place pages.
    */
   async collectListingUrls(page: Page): Promise<string[]> {
-    const hrefs: string[] = await (page as any).evaluate((selectors: string[]) => {
-      for (const sel of selectors) {
+    const summaries = await this.collectListingSummaries(page);
+    return summaries.map((summary) => summary.url);
+  }
+
+  /**
+   * Collect visible listing cards with tile-level signals that can avoid
+   * unnecessary detail-page navigation.
+   */
+  async collectListingSummaries(page: Page): Promise<GmapsListingSummary[]> {
+    const summaries: GmapsListingSummary[] = await (page as any).evaluate((selectors: GmapsSelectors) => {
+      function firstMatch(parent: Element | Document, candidates: string[]): Element | null {
+        for (const s of candidates) {
+          try {
+            const el = parent.querySelector(s);
+            if (el) return el;
+          } catch { /* skip */ }
+        }
+        return null;
+      }
+
+      function text(el: Element | null): string {
+        return el?.textContent?.trim() ?? '';
+      }
+
+      function websiteHref(card: Element): string | null {
+        const websiteEl = firstMatch(card, selectors.tileWebsite) as HTMLAnchorElement | null;
+        const href = websiteEl?.href ?? null;
+        if (!href) return null;
+        try {
+          const url = new URL(href);
+          if (url.hostname.includes('google.') && url.pathname.includes('/maps/')) return null;
+        } catch { /* keep raw href */ }
+        return href;
+      }
+
+      for (const sel of selectors.listingCards) {
         try {
           const cards = Array.from(document.querySelectorAll(sel));
           if (cards.length > 0) {
@@ -162,17 +209,35 @@ export class GmapsSearchService {
                 const a = card.tagName === 'A'
                   ? card as HTMLAnchorElement
                   : card.querySelector('a[href*="/maps/place/"]') as HTMLAnchorElement | null;
-                return a?.href ?? '';
+                const url = a?.href ?? '';
+                const website = websiteHref(card);
+                return {
+                  name: text(firstMatch(card, selectors.tileName)) || 'Unknown',
+                  url,
+                  website,
+                  hasWebsite: Boolean(website),
+                };
               })
-              .filter(Boolean);
+              .filter((listing) => listing.url);
           }
         } catch { /* skip */ }
       }
       return [];
-    }, GMAPS_SELECTORS.listingCards);
+    }, GMAPS_SELECTORS as unknown as GmapsSelectors);
 
-    // Deduplicate
-    return [...new Set(hrefs)];
+    const seen = new Set<string>();
+    const unique: GmapsListingSummary[] = [];
+    for (const rawSummary of summaries as Array<GmapsListingSummary | string>) {
+      const summary: GmapsListingSummary = typeof rawSummary === 'string'
+        ? { name: 'Unknown', url: rawSummary, website: null, hasWebsite: false }
+        : rawSummary;
+      if (!summary?.url) continue;
+      const key = gmapsListingKey(summary.url);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(summary);
+    }
+    return unique;
   }
 
   safeUrl(page: Page): string {
@@ -193,7 +258,7 @@ export class GmapsSearchService {
    *
    * Scrolls with minimal delay, classifying each observed URL against cursor data into:
    * - knownDuplicateKeys: safe to seed scrollUntilStable (already in cursor, no extraction needed)
-   * - freshProbeUrls: NOT in cursor — must flow through full extraction pipeline
+   * - freshProbeListings: NOT in cursor — adapter applies listing-stage filters then routes to collectedUrls
    *
    * Stops when anchor is hit, tail-hit threshold is reached, or budget is exhausted.
    * Returns NORMAL_FRESH (empty sets) if the feed looks shuffled — caller falls through cleanly.
@@ -217,7 +282,7 @@ export class GmapsSearchService {
 
     if (opts.cursorTailIds.length < minTail) {
       return {
-        mode: 'NORMAL', knownDuplicateKeys: new Set(), freshProbeUrls: [],
+        mode: 'NORMAL', knownDuplicateKeys: new Set(), freshProbeListings: [],
         probeSeenCount: 0, hitRate: 0, reason: 'NO_PROBE', scrolls: 0,
       };
     }
@@ -225,7 +290,7 @@ export class GmapsSearchService {
     const tailSet = new Set(opts.cursorTailIds);
     const seenKeys = new Set<string>();
     const known = new Set<string>();
-    const fresh: string[] = [];
+    const freshSummaries: GmapsListingSummary[] = [];
     let hits = 0;
     let scrolls = 0;
     const deadline = Date.now() + opts.maxMs;
@@ -242,16 +307,16 @@ export class GmapsSearchService {
       });
       scrolls++;
 
-      const allUrls = await this.collectListingUrls(page);
+      const allSummaries = await this.collectListingSummaries(page);
 
-      for (const url of allUrls) {
-        const key = gmapsListingKey(url);
+      for (const summary of allSummaries) {
+        const key = gmapsListingKey(summary.url);
         if (seenKeys.has(key)) continue;
         seenKeys.add(key);
 
         // Check both canonical and legacy key formats against cursorSeenIds to handle
         // existing rows written before gmapsListingKey was introduced.
-        const legacyKey = placeIdFromUrl(url) ?? url;
+        const legacyKey = placeIdFromUrl(summary.url) ?? summary.url;
         const inTail = tailSet.has(key);
         const inSeenId = opts.cursorSeenIds.has(key) || opts.cursorSeenIds.has(legacyKey);
 
@@ -259,12 +324,12 @@ export class GmapsSearchService {
           known.add(key);
           if (inTail) hits++;
         } else {
-          fresh.push(url);
+          freshSummaries.push(summary);
         }
 
         if (opts.anchor && key === opts.anchor) {
           return {
-            mode: 'NORMAL_FROM_ANCHOR', knownDuplicateKeys: known, freshProbeUrls: fresh,
+            mode: 'NORMAL_FROM_ANCHOR', knownDuplicateKeys: known, freshProbeListings: freshSummaries,
             probeSeenCount: seenKeys.size, hitRate: hits / tailSet.size,
             reason: 'ANCHOR_HIT', scrolls,
           };
@@ -274,7 +339,7 @@ export class GmapsSearchService {
       const hitRate = hits / tailSet.size;
       if (hitRate >= threshold) {
         return {
-          mode: 'NORMAL_FROM_TAIL', knownDuplicateKeys: known, freshProbeUrls: fresh,
+          mode: 'NORMAL_FROM_TAIL', knownDuplicateKeys: known, freshProbeListings: freshSummaries,
           probeSeenCount: seenKeys.size, hitRate,
           reason: 'TAIL_THRESHOLD_MET', scrolls,
         };
@@ -284,7 +349,7 @@ export class GmapsSearchService {
       // Return empty sets so scrollUntilStable runs from scratch — correctness preserved.
       if (scrolls >= shuffleDetect && hits === 0) {
         return {
-          mode: 'NORMAL_FRESH', knownDuplicateKeys: new Set(), freshProbeUrls: [],
+          mode: 'NORMAL_FRESH', knownDuplicateKeys: new Set(), freshProbeListings: [],
           probeSeenCount: seenKeys.size, hitRate: 0,
           reason: 'NO_OVERLAP_SHUFFLE', scrolls,
         };
@@ -292,7 +357,7 @@ export class GmapsSearchService {
     }
 
     return {
-      mode: 'NORMAL_FROM_PARTIAL', knownDuplicateKeys: known, freshProbeUrls: fresh,
+      mode: 'NORMAL_FROM_PARTIAL', knownDuplicateKeys: known, freshProbeListings: freshSummaries,
       probeSeenCount: seenKeys.size, hitRate: hits / tailSet.size,
       reason: 'BUDGET_EXHAUSTED', scrolls,
     };

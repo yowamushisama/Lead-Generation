@@ -212,6 +212,7 @@ export class LeadsService {
       email: lead.email,
       phone: lead.phone,
       website: lead.website,
+      hasMeaningfulWebsite: (lead as any).hasMeaningfulWebsite ?? null,
       intentType: lead.intentType,
       intentUrgency: lead.intentUrgency,
       intentConfidence: lead.intentConfidence,

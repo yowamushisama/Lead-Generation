@@ -21,6 +21,7 @@ const mockPlace = (overrides: Partial<GmapsPlace> = {}): GmapsPlace => ({
   address: '123 Main St, Austin, TX',
   phone: '+15125550001',
   website: 'https://acmeplumbing.example.com',
+  yearsInBusiness: null,
   businessHours: { monday: '8 AM–5 PM' },
   lastReviewAt: '2026-04-01T00:00:00.000Z',
   socialHandles: {},
@@ -63,6 +64,15 @@ describe('GoogleMapsAdapter', () => {
       buildSearchUrl: jest.fn().mockReturnValue('https://www.google.com/maps/search/plumber+in+Austin'),
       navigateToSearch: jest.fn().mockResolvedValue(undefined),
       scrollUntilStable: makeScrollMock(),
+      fastScrollProbe: jest.fn().mockResolvedValue({
+        mode: 'NORMAL',
+        knownDuplicateKeys: new Set(),
+        freshProbeListings: [],
+        probeSeenCount: 0,
+        hitRate: 0,
+        reason: 'DISABLED',
+        scrolls: 0,
+      }),
       safeUrl: jest.fn().mockReturnValue('https://www.google.com/maps/search/...'),
     } as unknown as jest.Mocked<GmapsSearchService>;
 
@@ -163,6 +173,104 @@ describe('GoogleMapsAdapter', () => {
       results.push(lead);
     }
     expect(results).toHaveLength(1);
+  });
+
+  it('applies rating and review filters in tile mode without forcing detail extraction', async () => {
+    extractionService.extractTiles.mockResolvedValue([
+      { name: 'Good Shop', rating: 4.8, reviewCount: 80, category: 'Plumber', website: null, url: TEST_URL_1 },
+      { name: 'Low Rated Shop', rating: 3.2, reviewCount: 100, category: 'Plumber', website: null, url: TEST_URL_2 },
+    ]);
+
+    const results: RawLeadInput[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      fetchDetails: false,
+      gmapsFilters: { minRating: 4, minReviewCount: 10 },
+    } as any)) {
+      results.push(lead as RawLeadInput);
+    }
+
+    expect(extractionService.extractFromUrl).not.toHaveBeenCalled();
+    expect(results).toHaveLength(1);
+    expect(results[0].name).toBe('Good Shop');
+  });
+
+  it('filters website-button listings in tile mode for no-website ICP filters', async () => {
+    extractionService.extractTiles.mockResolvedValue([
+      { name: 'Has Site', rating: 4.8, reviewCount: 80, category: 'Plumber', website: 'https://hassite.example.com', url: TEST_URL_1 },
+      { name: 'No Site', rating: 4.2, reviewCount: 30, category: 'Plumber', website: null, url: TEST_URL_2 },
+    ]);
+
+    const results: RawLeadInput[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      fetchDetails: false,
+      gmapsFilters: { websitePresence: 'none' },
+    } as any)) {
+      results.push(lead as RawLeadInput);
+    }
+
+    expect(extractionService.extractFromUrl).not.toHaveBeenCalled();
+    expect(results).toHaveLength(1);
+    expect(results[0].name).toBe('No Site');
+  });
+
+  it('prefilters website-button listings before detail extraction for no-website ICP filters', async () => {
+    const statsCollector = {
+      beginQuery: jest.fn().mockResolvedValue('gmaps-log-1'),
+      recordCandidateUrlsCollected: jest.fn(),
+      recordCandidateExtracted: jest.fn(),
+      recordFilteredOut: jest.fn(),
+      finishQuery: jest.fn().mockResolvedValue(undefined),
+    };
+
+    searchService.scrollUntilStable.mockImplementationOnce(async (_page, opts: any) => {
+      await opts.onBatch(
+        [TEST_URL_1, TEST_URL_2],
+        [
+          { name: 'Has Site', url: TEST_URL_1, website: 'https://hassite.example.com', hasWebsite: true },
+          { name: 'No Site', url: TEST_URL_2, website: null, hasWebsite: false },
+        ],
+      );
+      return 'END_OF_FEED';
+    });
+    extractionService.extractFromUrl.mockReset();
+    extractionService.extractFromUrl.mockImplementation(async (_page, url) =>
+      mockPlace({
+        placeId: 'ChIJtest5678',
+        name: 'No Site',
+        website: null,
+        sourceUrl: url,
+      }),
+    );
+
+    const results: RawLeadInput[] = [];
+    for await (const lead of adapter.collect({
+      organizationId: 'org-1',
+      campaignId: 'campaign-1',
+      industries: ['plumber'],
+      locations: ['Austin TX'],
+      gmapsFilters: { websitePresence: 'none' },
+      statsCollector,
+    } as any)) {
+      results.push(lead as RawLeadInput);
+    }
+
+    expect(extractionService.extractFromUrl).toHaveBeenCalledTimes(1);
+    expect(extractionService.extractFromUrl).toHaveBeenCalledWith(expect.anything(), TEST_URL_2);
+    expect(cursorRepository.appendSeen).toHaveBeenCalledWith(
+      'campaign-1',
+      'google_maps',
+      expect.any(String),
+      expect.arrayContaining(['ChIJtest1234', 'ChIJtest5678']),
+    );
+    expect(statsCollector.recordFilteredOut).toHaveBeenCalledWith('gmaps-log-1', ['website']);
+    expect(results).toHaveLength(1);
+    expect(results[0].name).toBe('No Site');
   });
 
   it('falls back externalId to sourceUrl when placeId is null', async () => {

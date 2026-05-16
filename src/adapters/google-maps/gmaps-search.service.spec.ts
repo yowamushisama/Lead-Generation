@@ -60,7 +60,7 @@ describe('GmapsSearchService.fastScrollProbe', () => {
     expect(result.reason).toBe('NO_PROBE');
     expect(result.scrolls).toBe(0);
     expect(result.knownDuplicateKeys.size).toBe(0);
-    expect(result.freshProbeUrls).toHaveLength(0);
+    expect(result.freshProbeListings).toHaveLength(0);
     expect(page.evaluate).not.toHaveBeenCalled();
   });
 
@@ -99,7 +99,7 @@ describe('GmapsSearchService.fastScrollProbe', () => {
     expect(result.scrolls).toBe(1);
     // Anchor and tail URLs are known dups; fresh URL is separate
     expect(result.knownDuplicateKeys.has(anchorKey)).toBe(true);
-    expect(result.freshProbeUrls.some((u) => u === makeUrl('Brand_New_1'))).toBe(true);
+    expect(result.freshProbeListings.some((l) => l.url === makeUrl('Brand_New_1'))).toBe(true);
   });
 
   // ── NORMAL_FROM_TAIL ──────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ describe('GmapsSearchService.fastScrollProbe', () => {
     expect(result.reason).toBe('TAIL_THRESHOLD_MET');
     expect(result.hitRate).toBeGreaterThanOrEqual(0.4);
     expect(result.knownDuplicateKeys.size).toBe(5);
-    expect(result.freshProbeUrls).toHaveLength(0);
+    expect(result.freshProbeListings).toHaveLength(0);
   });
 
   // ── NORMAL_FRESH (shuffle detected) ──────────────────────────────────────
@@ -150,7 +150,7 @@ describe('GmapsSearchService.fastScrollProbe', () => {
     expect(result.mode).toBe('NORMAL_FRESH');
     expect(result.reason).toBe('NO_OVERLAP_SHUFFLE');
     expect(result.knownDuplicateKeys.size).toBe(0);
-    expect(result.freshProbeUrls).toHaveLength(0);
+    expect(result.freshProbeListings).toHaveLength(0);
     expect(result.scrolls).toBe(3);
   });
 
@@ -180,7 +180,7 @@ describe('GmapsSearchService.fastScrollProbe', () => {
 
   // ── Fresh-above-anchor correctness (the v1 bug) ───────────────────────────
 
-  it('puts a fresh listing above the anchor into freshProbeUrls, NOT knownDuplicateKeys', async () => {
+  it('puts a fresh listing above the anchor into freshProbeListings, NOT knownDuplicateKeys', async () => {
     const anchorId = 'ANCHOR';
     const anchorKey = `ChIJ${anchorId}`;
     const tailIds = Array.from({ length: 10 }, (_, i) => `ChIJTail${i}`);
@@ -202,10 +202,10 @@ describe('GmapsSearchService.fastScrollProbe', () => {
 
     expect(result.mode).toBe('NORMAL_FROM_ANCHOR');
 
-    // The fresh URL must be in freshProbeUrls, not in knownDuplicateKeys.
+    // The fresh URL must be in freshProbeListings, not in knownDuplicateKeys.
     // gmapsListingKey(makeUrl('BrandNew')) extracts 'ChIJBrandNew' from the !19s... segment.
     const freshInKnown = [...result.knownDuplicateKeys].some((k) => k.includes('BrandNew'));
-    const freshInFresh = result.freshProbeUrls.some((u) => u === freshUrl);
+    const freshInFresh = result.freshProbeListings.some((l) => l.url === freshUrl);
 
     expect(freshInKnown).toBe(false);
     expect(freshInFresh).toBe(true);
@@ -237,7 +237,7 @@ describe('GmapsSearchService.fastScrollProbe', () => {
     // not the raw legacy URL. The raw url is 'https://.../SomeBiz/?cid=1234', canonical is
     // 'https://.../SomeBiz/' (query stripped by normalizeGmapsUrl).
     const canonicalKey = 'https://www.google.com/maps/place/SomeBiz/';
-    expect(result.freshProbeUrls.some((u) => u === legacyUrl)).toBe(false);
+    expect(result.freshProbeListings.some((l) => l.url === legacyUrl)).toBe(false);
     expect(result.knownDuplicateKeys.has(canonicalKey)).toBe(true);
   });
 });

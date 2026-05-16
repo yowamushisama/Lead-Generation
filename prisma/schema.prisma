@@ -69,7 +69,8 @@ model Lead {
   location        String?
   email           String?
   phone           String?
-  website         String?
+  website              String?
+  hasMeaningfulWebsite Boolean?
   originalContent String?
   intentType      String?
   intentUrgency   String?
@@ -120,6 +121,7 @@ model Lead {
   @@index([organizationId, tier, status])
   @@index([organizationId, score])
   @@index([organizationId, source])
+  @@index([organizationId, source, hasMeaningfulWebsite])
   @@index([contentHash, organizationId])
 }
 

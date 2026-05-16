@@ -3,7 +3,7 @@ import { BaseAdapter } from '../base.adapter';
 import { AdapterConfig } from '../../common/interfaces/adapter.interface';
 import { RawLeadInput } from '../../common/interfaces/lead-input.interface';
 import { LeadSource } from '../../common/enums/lead-source.enum';
-import { GmapsSearchService } from './gmaps-search.service';
+import { GmapsSearchService, type GmapsListingSummary } from './gmaps-search.service';
 import { GmapsExtractionService, GmapsPlace } from './gmaps-extraction.service';
 import {
   GmapsAdapterConfig,
@@ -27,6 +27,7 @@ import { CampaignScrapeCursorRepository } from '../../database/repositories/camp
 import { placeIdFromUrl, normalizeGmapsUrl } from './gmaps-url-utils';
 import { gmapsListingKey } from './gmaps-listing-key';
 import { queryKey } from './gmaps-query-key';
+import { evaluateGmapsFilters, requiresDetailExtraction, classifyWebsite } from './gmaps-filter';
 
 @Injectable()
 export class GoogleMapsAdapter extends BaseAdapter {
@@ -71,11 +72,19 @@ export class GoogleMapsAdapter extends BaseAdapter {
       gmapsConfig.fastScrollEnabled === true;
     const statsCollector = gmapsConfig.statsCollector;
     const cancellationSignal = gmapsConfig.cancellationSignal ?? { reason: null };
+    const gmapsFilters = gmapsConfig.gmapsFilters;
     const maxExtractionsPerQuery = gmapsConfig.maxExtractionsPerQuery ?? MAX_EXTRACTIONS_PER_QUERY;
     const maxScrollBudgetPerQuery = gmapsConfig.maxScrollBudgetPerQuery ?? MAX_SCROLL_BUDGET_PER_QUERY;
     const maxScrollPhaseMs = gmapsConfig.maxScrollPhaseMs ?? MAX_SCROLL_PHASE_MS;
     const maxExtractPhaseMs = gmapsConfig.maxExtractPhaseMs ?? MAX_EXTRACT_PHASE_MS;
     const { organizationId, campaignId } = config;
+
+    // If ICP filters require website or years data, force detail extraction regardless of config.
+    let effectiveFetchDetails = fetchDetails;
+    if (gmapsFilters && requiresDetailExtraction(gmapsFilters) && !effectiveFetchDetails) {
+      this.logWarn('ICP Google Maps filters require detail extraction — forcing fetchDetails=true', { organizationId });
+      effectiveFetchDetails = true;
+    }
 
     if (locations.length === 0 || industries.length === 0) {
       this.logWarn('Google Maps adapter requires both locations and industries', { organizationId });
@@ -155,12 +164,12 @@ export class GoogleMapsAdapter extends BaseAdapter {
           // Fast-scroll probe: runs once per query (not per retry) before retryWithBackoff.
           // Navigation happens here if the probe runs; retryWithBackoff skips it on first attempt.
           let probeResult: FastScrollResult = {
-            mode: 'NORMAL', knownDuplicateKeys: new Set(), freshProbeUrls: [],
+            mode: 'NORMAL', knownDuplicateKeys: new Set(), freshProbeListings: [],
             probeSeenCount: 0, hitRate: 0, reason: 'DISABLED', scrolls: 0,
           };
           let probeNavigated = false;
 
-          if (cursor && fastScrollEnabled && !ignoreExhausted && fetchDetails) {
+          if (cursor && fastScrollEnabled && !ignoreExhausted && effectiveFetchDetails) {
             await this.searchService.navigateToSearch(page, searchTerm, organizationId);
             probeNavigated = true;
             probeResult = await this.searchService.fastScrollProbe(page, {
@@ -174,7 +183,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
               minShuffleDetect: MIN_SHUFFLE_DETECT,
             });
             this.log(
-              `fastScrollProbe: mode=${probeResult.mode} reason=${probeResult.reason} scrolls=${probeResult.scrolls} hitRate=${probeResult.hitRate.toFixed(2)} fresh=${probeResult.freshProbeUrls.length} known=${probeResult.knownDuplicateKeys.size}`,
+              `fastScrollProbe: mode=${probeResult.mode} reason=${probeResult.reason} scrolls=${probeResult.scrolls} hitRate=${probeResult.hitRate.toFixed(2)} fresh=${probeResult.freshProbeListings.length} known=${probeResult.knownDuplicateKeys.size}`,
               { organizationId },
             );
             if (logId && statsCollector) {
@@ -183,7 +192,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
                 scrolls: probeResult.scrolls,
                 hitRate: probeResult.hitRate,
                 reason: probeResult.reason,
-                freshProbeUrlCount: probeResult.freshProbeUrls.length,
+                freshProbeUrlCount: probeResult.freshProbeListings.length,
                 knownDupCount: probeResult.knownDuplicateKeys.size,
                 probeSeenCount: probeResult.probeSeenCount,
               });
@@ -213,15 +222,15 @@ export class GoogleMapsAdapter extends BaseAdapter {
                   await this.searchService.navigateToSearch(page, searchTerm, organizationId);
                 }
 
-                if (fetchDetails) {
-                  // ── Pre-scroll: process freshProbeUrls from probe (if any) ──────
-                  // These are URLs the probe observed that weren't in cursor data.
-                  // Run them through DB dedup before the main scroll to avoid re-extraction.
+                if (effectiveFetchDetails) {
+                  // ── Pre-scroll: process freshProbeListings from probe (if any) ──────
+                  // These are listing summaries the probe observed that weren't in cursor data.
+                  // Run them through DB dedup + listing-stage filter before the main scroll.
                   const collectedUrls: string[] = [];
 
-                  if (probeResult.freshProbeUrls.length > 0) {
-                    const freshKeys = probeResult.freshProbeUrls.map(gmapsListingKey);
-                    const freshNormUrls = probeResult.freshProbeUrls.map(normalizeGmapsUrl);
+                  if (probeResult.freshProbeListings.length > 0) {
+                    const freshKeys = probeResult.freshProbeListings.map((l) => gmapsListingKey(l.url));
+                    const freshNormUrls = probeResult.freshProbeListings.map((l) => normalizeGmapsUrl(l.url));
                     const freshMatches = await this.leadRepository.findMany({
                       where: {
                         organizationId,
@@ -240,13 +249,16 @@ export class GoogleMapsAdapter extends BaseAdapter {
                           .filter((v): v is string => Boolean(v)),
                       ),
                     );
-                    for (const url of probeResult.freshProbeUrls) {
-                      const key = gmapsListingKey(url);
-                      if (freshKnownIds.has(key) || freshKnownIds.has(normalizeGmapsUrl(url))) {
+                    for (const listing of probeResult.freshProbeListings) {
+                      const key = gmapsListingKey(listing.url);
+                      if (freshKnownIds.has(key) || freshKnownIds.has(normalizeGmapsUrl(listing.url))) {
                         seenAccumulator.push(key);
                         if (logId && statsCollector) statsCollector.recordDbBatchDuplicate(logId, 1);
+                      } else if (gmapsFilters?.websitePresence === 'none' && listing.hasWebsite) {
+                        seenAccumulator.push(key);
+                        if (logId && statsCollector) statsCollector.recordFilteredOut(logId, ['website']);
                       } else {
-                        collectedUrls.push(url);
+                        collectedUrls.push(listing.url);
                       }
                     }
                   }
@@ -254,11 +266,10 @@ export class GoogleMapsAdapter extends BaseAdapter {
                   // ── Phase 1: Adaptive scroll with inline DB dedup per batch ─────
                   // Detects duplicate walls against BOTH cursor cache and DB, so scroll
                   // stops early even when cursor cache hasn't warmed up yet.
-                  // Seed seenInSession with known-duplicate keys from the probe so the scroll
-                  // skips those at URL-collection time, saving per-batch DB lookups.
-                  // Also seed with freshProbeUrls keys to avoid re-yielding them via onBatch.
+                  // Seed seenInSession with known-duplicate keys from the probe AND fresh probe keys
+                  // so the main scroll doesn't re-emit listings the probe already processed.
                   const probeSeed = new Set(probeResult.knownDuplicateKeys);
-                  for (const url of probeResult.freshProbeUrls) probeSeed.add(gmapsListingKey(url));
+                  for (const listing of probeResult.freshProbeListings) probeSeed.add(gmapsListingKey(listing.url));
 
                   let consecutiveDuplicateBatches = 0;
 
@@ -270,7 +281,11 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       scrollAttempts++;
                       if (logId && statsCollector) statsCollector.recordScrollAttempt(logId);
                     },
-                    onBatch: async (newUrls) => {
+                    onBatch: async (newUrls, newListings?: GmapsListingSummary[]) => {
+                      const listingByKey = new Map(
+                        (newListings ?? []).map((listing) => [gmapsListingKey(listing.url), listing]),
+                      );
+
                       // Track ALL observed listing keys for the tail anchor (before any dedup).
                       for (const url of newUrls) recentObservedIds.push(gmapsListingKey(url));
 
@@ -334,6 +349,17 @@ export class GoogleMapsAdapter extends BaseAdapter {
                           dbDups++;
                           seenAccumulator.push(id);
                         } else {
+                          const listing = listingByKey.get(id);
+                          if (gmapsFilters?.websitePresence === 'none' && listing?.hasWebsite) {
+                            seenAccumulator.push(id);
+                            this.logger.debug({
+                              message: 'Listing filtered by ICP Google Maps filters',
+                              name: listing.name,
+                              reasons: ['website'],
+                            });
+                            if (logId && statsCollector) statsCollector.recordFilteredOut(logId, ['website']);
+                            continue;
+                          }
                           collectedUrls.push(url);
                           freshCount++;
                         }
@@ -395,6 +421,20 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       continue;
                     }
 
+                    // Apply ICP Google Maps quality filters
+                    if (gmapsFilters) {
+                      const filterResult = evaluateGmapsFilters(place, gmapsFilters);
+                      if (!filterResult.passed) {
+                        this.logger.debug({
+                          message: 'Lead filtered by ICP Google Maps filters',
+                          name: place.name,
+                          reasons: filterResult.reasons,
+                        });
+                        if (logId && statsCollector) statsCollector.recordFilteredOut(logId, filterResult.reasons);
+                        continue;
+                      }
+                    }
+
                     attemptSeenIds.add(dedupeId);
                     seenAccumulator.push(dedupeId);
                     lastExtractedDedupeId = dedupeId;
@@ -453,12 +493,45 @@ export class GoogleMapsAdapter extends BaseAdapter {
                       continue;
                     }
 
+                    if (gmapsFilters) {
+                      const filterResult = evaluateGmapsFilters(
+                        {
+                          placeId: placeIdFromUrl(tile.url),
+                          name: tile.name,
+                          rating: tile.rating,
+                          reviewCount: tile.reviewCount,
+                          category: tile.category,
+                          googleTypes: tile.category ? [tile.category] : [],
+                          address: null,
+                          phone: null,
+                          website: tile.website ?? null,
+                          yearsInBusiness: null,
+                          businessHours: null,
+                          lastReviewAt: null,
+                          socialHandles: {},
+                          sourceUrl: tile.url,
+                        },
+                        gmapsFilters,
+                      );
+                      if (!filterResult.passed) {
+                        this.logger.debug({
+                          message: 'Tile filtered by ICP Google Maps filters',
+                          name: tile.name,
+                          reasons: filterResult.reasons,
+                        });
+                        if (logId && statsCollector) statsCollector.recordFilteredOut(logId, filterResult.reasons);
+                        continue;
+                      }
+                    }
+
                     seenAccumulator.push(dedupeId);
                     batchYielded.push({
                       externalId: dedupeId,
                       source: LeadSource.GOOGLE_MAPS,
                       sourceType: 'discovery',
                       sourceUrl: tile.url,
+                      website: tile.website ?? undefined,
+                      hasMeaningfulWebsite: classifyWebsite(tile.website) ?? false,
                       name: tile.name,
                       company: tile.name,
                       industry,
@@ -584,6 +657,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
       location: place.address ?? undefined,
       phone: place.phone ?? undefined,
       website: place.website ?? undefined,
+      hasMeaningfulWebsite: classifyWebsite(place.website) ?? false,
       industry,
       metadata: {
         rating: place.rating,
@@ -592,6 +666,7 @@ export class GoogleMapsAdapter extends BaseAdapter {
         googleTypes: place.googleTypes,
         businessHours: place.businessHours,
         lastReviewAt: place.lastReviewAt,
+        yearsInBusiness: place.yearsInBusiness ?? null,
         socialHandlesFromGmaps: place.socialHandles,
         campaignId,
         searchQuery: searchQuery ?? place.sourceUrl,

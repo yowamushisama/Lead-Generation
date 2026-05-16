@@ -36,6 +36,7 @@ export class LeadDetailResponseDto {
   @ApiPropertyOptional() email!: string | null;
   @ApiPropertyOptional() phone!: string | null;
   @ApiPropertyOptional() website!: string | null;
+  @ApiPropertyOptional() hasMeaningfulWebsite!: boolean | null;
   @ApiPropertyOptional() intentType!: string | null;
   @ApiPropertyOptional() intentUrgency!: string | null;
   @ApiPropertyOptional() intentConfidence!: number | null;

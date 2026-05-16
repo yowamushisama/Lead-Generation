@@ -5,6 +5,9 @@ import { LeadsService } from './leads.service';
 import { JwtAuthGuard } from '../common/guards/auth.guard';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { ReportArtifactRepository } from '../database/repositories/report-artifact.repository';
+import { MessageRepository } from '../database/repositories/message.repository';
+import { DeepReportGeneratorStage } from '../pipeline/stages/deep-report-generator.stage';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -37,6 +40,16 @@ const mockLeadsService = {
   bulkCreate: jest.fn(),
   getStats: jest.fn(),
 };
+const mockReportArtifactRepository = {
+  findLatest: jest.fn(),
+  findAllVersions: jest.fn(),
+};
+const mockMessageRepository = {
+  findFirst: jest.fn(),
+};
+const mockDeepReportGeneratorStage = {
+  process: jest.fn(),
+};
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +61,12 @@ describe('LeadsController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [LeadsController],
-      providers: [{ provide: LeadsService, useValue: mockLeadsService }],
+      providers: [
+        { provide: LeadsService, useValue: mockLeadsService },
+        { provide: ReportArtifactRepository, useValue: mockReportArtifactRepository },
+        { provide: MessageRepository, useValue: mockMessageRepository },
+        { provide: DeepReportGeneratorStage, useValue: mockDeepReportGeneratorStage },
+      ],
     })
       .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
       .overrideGuard(TenantGuard).useValue({ canActivate: () => true })

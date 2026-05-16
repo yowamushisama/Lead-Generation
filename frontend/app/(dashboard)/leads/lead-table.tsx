@@ -26,6 +26,7 @@ export function LeadTable({
   total,
   pageSize,
   campaignId,
+  hasFilters,
   onToggleAll,
   onSelect,
   onStatusChange,
@@ -43,6 +44,7 @@ export function LeadTable({
   total: number;
   pageSize: number;
   campaignId?: string;
+  hasFilters?: boolean;
   onToggleAll: () => void;
   onSelect: (id: string) => void;
   onStatusChange: (id: string, status: LeadStatus) => void;
@@ -95,8 +97,30 @@ export function LeadTable({
               : leads.length === 0
                 ? (
                   <tr>
-                    <td colSpan={totalColCount} className="px-4 py-16 text-center">
-                      <p className="font-mono text-[12px] text-mist">No leads match your filters</p>
+                    <td colSpan={totalColCount} className="px-4 py-20 text-center">
+                      {hasFilters ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" className="text-mist/40">
+                            <circle cx="20" cy="20" r="18" stroke="currentColor" strokeWidth="1.5" />
+                            <path d="M13 20h14M20 13v14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="3 3" />
+                          </svg>
+                          <p className="font-mono text-[12px] text-mist">No leads match your filters</p>
+                          <p className="font-mono text-[10px] text-dusk">Try adjusting or clearing your filters</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-3">
+                          <svg width="56" height="56" viewBox="0 0 56 56" fill="none" className="text-mist/30">
+                            <rect x="8" y="14" width="40" height="30" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                            <path d="M8 22h40" stroke="currentColor" strokeWidth="1.5" />
+                            <path d="M16 30h8M16 36h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            <path d="M34 33l8 8M42 33l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                          <div>
+                            <p className="font-mono text-[13px] font-500 text-mist">No records</p>
+                            <p className="mt-0.5 font-mono text-[11px] text-dusk">Run a campaign to start collecting leads</p>
+                          </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )

@@ -59,7 +59,7 @@ describe('LeadIngestionService', () => {
       { campaignId: 'camp-1' },
     );
 
-    expect(result).toEqual({ lead: leadRow, created: true, duplicate: false });
+    expect(result).toEqual({ lead: leadRow, created: true });
     expect(mockLeadRepository.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         organizationId: 'org-1',
@@ -81,7 +81,7 @@ describe('LeadIngestionService', () => {
       tenant as any,
     );
 
-    expect(result).toEqual({ lead: leadRow, created: false, duplicate: true });
+    expect(result).toEqual({ lead: leadRow, created: false });
     expect(mockLeadRepository.create).not.toHaveBeenCalled();
   });
 
@@ -101,6 +101,6 @@ describe('LeadIngestionService', () => {
       tenant as any,
     );
 
-    expect(result).toEqual({ lead: leadRow, created: false, duplicate: true });
+    expect(result).toEqual({ lead: leadRow, created: false });
   });
 });

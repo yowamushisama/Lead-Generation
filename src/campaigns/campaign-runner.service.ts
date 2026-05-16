@@ -10,37 +10,15 @@ import { CampaignRepository } from '../database/repositories/campaign.repository
 import { OrchestratorService } from '../pipeline/orchestrator.service';
 import { LeadIngestionService } from '../pipeline/lead-ingestion.service';
 import { RedisService } from '../database/redis.service';
-import { ICPConfig } from '../common/types/icp.types';
 import { CampaignRunLogRepository } from '../database/repositories/campaign-run-log.repository';
 import { GmapsScrapeRunLogRepository } from '../database/repositories/gmaps-scrape-run-log.repository';
 import { GmapsRunStatsCollectorImpl } from '../adapters/google-maps/gmaps-run-stats.collector';
 import { CancellationSignal } from '../adapters/google-maps/gmaps-adapter.config';
+import { CampaignRunTrigger, CampaignRunSummary } from './campaign-runner.types';
+import { SAFETY_MULTIPLIER, MAX_RUN_DURATION_MS, MAX_RUN_ERRORS } from './campaign-runner.constants';
+import { latestFirst, readStringArray, resolveTargets, extractGmapsFilters } from './campaign-runner.utils';
 
-export type CampaignRunTrigger = 'activation' | 'scheduled' | 'manual';
-
-export interface CampaignRunSummary {
-  runId: string;
-  campaignId: string;
-  trigger: CampaignRunTrigger;
-  goalMaxLeads: number;
-  reachedGoal: boolean;
-  endReason: string;
-  adaptersAttempted: string[];
-  adaptersUsed: string[];
-  skippedAdapters: Array<{ adapter: string; reason: string }>;
-  saved: number;
-  duplicates: number;
-  duplicatesAtIngestion: number;
-  duplicatesAtAdapter: number;
-  candidatesYielded: number;
-  enqueued: number;
-  errors: number;
-}
-
-/** Campaign-wide saved-lead goal safety multiplier: max candidates = goal × this. */
-const SAFETY_MULTIPLIER = 5;
-const MAX_RUN_DURATION_MS = 4 * 60 * 60_000; // 4 hours — each query can now take up to 43 min
-const MAX_RUN_ERRORS = 25;
+export type { CampaignRunTrigger, CampaignRunSummary };
 
 @Injectable()
 export class CampaignRunnerService {
@@ -165,24 +143,12 @@ export class CampaignRunnerService {
     const maxRunErrors = this.readIntEnv('CAMPAIGN_RUN_MAX_ERRORS') ?? MAX_RUN_ERRORS;
 
     const settings = (campaign.settings as Record<string, unknown> | null) ?? {};
-    const targetSources = this.readStringArray(settings['targetSources']);
+    const targetSources = readStringArray(settings['targetSources']);
     const requestedSources = this.resolveRequestedSources(targetSources);
     const keywords = ((campaign.keywords as string[] | null) ?? []).filter(Boolean);
     const campaignLocations = ((campaign.targetLocations as string[] | null) ?? []).filter(Boolean);
     const campaignIndustries = ((campaign.targetIndustries as string[] | null) ?? []).filter(Boolean);
-    const icpConfig = ((campaign as any).icpProfile?.config as ICPConfig | null) ?? {} as ICPConfig;
-    const icpLocations = (
-      (((campaign as any).icpProfile?.targetLocations as string[] | null) ?? []).filter(Boolean).length > 0
-        ? ((campaign as any).icpProfile?.targetLocations as string[])
-        : (icpConfig.targetLocations ?? [])
-    ).filter(Boolean);
-    const icpIndustries = (
-      (((campaign as any).icpProfile?.targetIndustries as string[] | null) ?? []).filter(Boolean).length > 0
-        ? ((campaign as any).icpProfile?.targetIndustries as string[])
-        : (icpConfig.targetIndustries ?? [])
-    ).filter(Boolean);
-    const locations = campaignLocations.length > 0 ? campaignLocations : icpLocations;
-    const industries = campaignIndustries.length > 0 ? campaignIndustries : icpIndustries;
+    const { icpConfig, locations, industries } = resolveTargets(campaign, campaignLocations, campaignIndustries);
 
     const summary: CampaignRunSummary = {
       runId,
@@ -266,6 +232,8 @@ export class CampaignRunnerService {
 
         const isGmaps = adapter.name === LeadSource.GOOGLE_MAPS;
 
+        const icpGmapsFilters = isGmaps ? extractGmapsFilters(icpConfig) : undefined;
+
         const adapterConfig: Record<string, unknown> = {
           organizationId,
           campaignId,
@@ -277,6 +245,7 @@ export class CampaignRunnerService {
             statsCollector,
             cancellationSignal,
             fastScrollEnabled: settings.gmapsFastScrollEnabled === true,
+            ...(icpGmapsFilters ? { gmapsFilters: icpGmapsFilters } : {}),
           } : {}),
         };
 
@@ -474,11 +443,6 @@ export class CampaignRunnerService {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
-  }
-
-  private readStringArray(value: unknown): string[] {
-    if (!Array.isArray(value)) return [];
-    return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
   }
 
   private readIntEnv(key: string): number | undefined {

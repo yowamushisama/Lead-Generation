@@ -5,6 +5,7 @@ import { RawLeadInput } from '../common/interfaces/lead-input.interface';
 import { LeadStatus } from '../common/enums/lead-status.enum';
 import { LeadRepository } from '../database/repositories/lead.repository';
 import { DeduplicationService } from '../leads/deduplication.service';
+import { classifyWebsite } from '../adapters/google-maps/gmaps-filter';
 
 export interface LeadIngestionResult {
   lead: Lead;
@@ -50,6 +51,17 @@ export class LeadIngestionService {
 
     try {
       const meta = (rawInput.metadata ?? {}) as Record<string, unknown>;
+
+      // Classify website meaningfulness centrally for all adapters.
+      // Adapter may pass an explicit value (gmaps does); otherwise derive from website string.
+      // null only when adapter provides neither website nor explicit classification.
+      const hasMeaningfulWebsite: boolean | null =
+        rawInput.hasMeaningfulWebsite !== undefined
+          ? rawInput.hasMeaningfulWebsite
+          : rawInput.website !== undefined
+            ? (classifyWebsite(rawInput.website) ?? false)
+            : null;
+
       const lead = await this.leadRepository.create({
         data: {
           organizationId,
@@ -68,6 +80,9 @@ export class LeadIngestionService {
           email: rawInput.email,
           phone: rawInput.phone,
           website: rawInput.website,
+          // hasMeaningfulWebsite requires schema migration + prisma:generate.
+          // Cast to any until the generated client is refreshed post-migration.
+          ...(hasMeaningfulWebsite !== null ? { hasMeaningfulWebsite } as any : {}),
           originalContent: rawInput.originalContent,
           contentHash,
           ...(rawInput.sourceType === 'discovery' && {

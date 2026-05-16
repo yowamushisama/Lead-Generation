@@ -1,3 +1,16 @@
+export type WebsitePresenceMode = 'any' | 'none' | 'none_or_social_only';
+
+export interface GmapsFilters {
+  minRating?: number;
+  minReviewCount?: number;
+  minYearsInBusiness?: number;
+  websitePresence?: WebsitePresenceMode;
+}
+
+export interface GmapsFiltersWithEnabled extends GmapsFilters {
+  enabled: boolean;
+}
+
 export interface ICPConfig {
   targetRoles: string[];
   targetIndustries: string[];
@@ -9,6 +22,9 @@ export interface ICPConfig {
   minCompanySize?: string;
   maxCompanySize?: string;
   excludedIndustries?: string[];
+  sourceFilters?: {
+    googleMaps?: GmapsFiltersWithEnabled;
+  };
 }
 
 export interface ICPMatch {

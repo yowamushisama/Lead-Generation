@@ -1,7 +1,9 @@
-import { ICPConfig } from '../../common/types/icp.types';
+import { PartialType } from '@nestjs/swagger';
+import { IsBoolean, IsOptional } from 'class-validator';
+import { CreateICPDto } from './create-icp.dto';
 
-export interface UpdateICPDto {
-  name?: string;
-  config?: Partial<ICPConfig>;
+export class UpdateICPDto extends PartialType(CreateICPDto) {
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
 }

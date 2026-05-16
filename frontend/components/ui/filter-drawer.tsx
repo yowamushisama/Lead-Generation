@@ -339,7 +339,7 @@ export function FilterDrawer({
           'fixed right-0 top-0 bottom-0 z-50 flex w-[21rem] flex-col',
           'border-l border-ink/[0.10] bg-surface shadow-[−4px_0_32px_rgba(0,0,0,0.4)]',
           'transition-transform duration-300 ease-out',
-          open ? 'translate-x-0' : 'translate-x-full',
+          open ? 'translate-x-0 visible' : 'translate-x-full invisible',
         )}
       >
         {/* ── Header: always visible, contains actions ── */}

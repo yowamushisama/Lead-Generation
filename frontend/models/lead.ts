@@ -130,6 +130,7 @@ export interface Lead {
   industry?: string | null;
   companySize?: string | null;
   website?: string | null;
+  hasMeaningfulWebsite?: boolean | null;
   headline?: string | null;
   bio?: string | null;
 

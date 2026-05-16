@@ -1,4 +1,3 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TenantGuard } from '../../src/common/guards/tenant.guard';
@@ -26,26 +25,10 @@ function createMockExecutionContext(request: MockRequest): ExecutionContext {
 
 describe('TenantGuard', () => {
   let guard: TenantGuard;
-  let configService: ConfigService;
 
   const mockConfigService = {
     get: jest.fn(),
   };
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        TenantGuard,
-        {
-          provide: ConfigService,
-          useValue: mockConfigService,
-        },
-      ],
-    }).compile();
-
-    guard = module.get<TenantGuard>(TenantGuard);
-    configService = module.get<ConfigService>(ConfigService);
-  });
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -58,6 +41,7 @@ describe('TenantGuard', () => {
         if (key === 'DEFAULT_ORGANIZATION_ID') return 'default';
         return undefined;
       });
+      guard = new TenantGuard(mockConfigService as unknown as ConfigService);
     });
 
     it('should inject default organizationId in single-tenant mode', () => {
@@ -108,6 +92,7 @@ describe('TenantGuard', () => {
         if (key === 'DEFAULT_ORGANIZATION_ID') return 'default';
         return undefined;
       });
+      guard = new TenantGuard(mockConfigService as unknown as ConfigService);
     });
 
     it('should extract organizationId from JWT payload', () => {
@@ -176,6 +161,7 @@ describe('TenantGuard', () => {
   describe('TenantGuard initialization', () => {
     it('should default to single-tenant mode when TENANT_MODE is not set', () => {
       mockConfigService.get.mockReturnValue(undefined);
+      guard = new TenantGuard(mockConfigService as unknown as ConfigService);
 
       const request: MockRequest = { headers: {} };
       const context = createMockExecutionContext(request);

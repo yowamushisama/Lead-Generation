@@ -1,19 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DeduplicationService } from '../../src/leads/deduplication.service';
-import { PrismaService } from '../../src/database/prisma.service';
+import { LeadRepository } from '../../src/database/repositories/lead.repository';
 import { HashUtil } from '../../src/common/utils/hash.util';
 
 describe('DeduplicationService', () => {
   let service: DeduplicationService;
   let hashUtil: HashUtil;
 
-  const mockPrismaService = {
-    lead: {
-      findUnique: jest.fn(),
-      findFirst: jest.fn(),
-      findMany: jest.fn(),
-      count: jest.fn(),
-    },
+  const mockLeadRepository = {
+    findUnique: jest.fn(),
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -22,8 +20,8 @@ describe('DeduplicationService', () => {
         DeduplicationService,
         HashUtil,
         {
-          provide: PrismaService,
-          useValue: mockPrismaService,
+          provide: LeadRepository,
+          useValue: mockLeadRepository,
         },
       ],
     }).compile();
@@ -46,16 +44,16 @@ describe('DeduplicationService', () => {
     };
 
     it('should return false for a new unique lead', async () => {
-      mockPrismaService.lead.findUnique.mockResolvedValue(null);
-      mockPrismaService.lead.findFirst.mockResolvedValue(null);
+      mockLeadRepository.findUnique.mockResolvedValue(null);
+      mockLeadRepository.findFirst.mockResolvedValue(null);
 
       const result = await service.checkDuplicate(baseInput);
       expect(result).toBe(false);
     });
 
     it('should detect duplicate by email', async () => {
-      mockPrismaService.lead.findUnique.mockResolvedValue(null);
-      mockPrismaService.lead.findFirst.mockResolvedValueOnce({
+      mockLeadRepository.findUnique.mockResolvedValue(null);
+      mockLeadRepository.findFirst.mockResolvedValueOnce({
         id: 'existing-lead-id',
         email: 'john@acme.com',
       });
@@ -65,7 +63,7 @@ describe('DeduplicationService', () => {
     });
 
     it('should detect duplicate by externalId + source + organizationId', async () => {
-      mockPrismaService.lead.findUnique.mockResolvedValue({
+      mockLeadRepository.findUnique.mockResolvedValue({
         id: 'existing-lead-id',
         externalId: 'ext-123',
       });
@@ -76,7 +74,7 @@ describe('DeduplicationService', () => {
       });
 
       expect(result).toBe(true);
-      expect(mockPrismaService.lead.findUnique).toHaveBeenCalledWith({
+      expect(mockLeadRepository.findUnique).toHaveBeenCalledWith({
         where: {
           externalId_source_organizationId: {
             externalId: 'ext-123',
@@ -88,21 +86,20 @@ describe('DeduplicationService', () => {
     });
 
     it('should detect duplicate by content hash', async () => {
-      mockPrismaService.lead.findUnique.mockResolvedValue(null);
-      mockPrismaService.lead.findFirst
-        .mockResolvedValueOnce(null) // email check
-        .mockResolvedValueOnce({ id: 'existing-lead' }); // hash check
+      mockLeadRepository.findUnique.mockResolvedValue(null);
+      mockLeadRepository.findFirst
+        .mockResolvedValueOnce({ id: 'existing-lead' }); // hash check; no email lookup when email is absent
 
       const result = await service.checkDuplicate({ ...baseInput, email: undefined });
       expect(result).toBe(true);
     });
 
     it('should not check externalId when not provided', async () => {
-      mockPrismaService.lead.findFirst.mockResolvedValue(null);
+      mockLeadRepository.findFirst.mockResolvedValue(null);
 
       await service.checkDuplicate(baseInput);
 
-      expect(mockPrismaService.lead.findUnique).not.toHaveBeenCalled();
+      expect(mockLeadRepository.findUnique).not.toHaveBeenCalled();
     });
   });
 
@@ -212,7 +209,7 @@ describe('DeduplicationService', () => {
 
   describe('getDeduplicationStats', () => {
     it('should return correct stats', async () => {
-      mockPrismaService.lead.count
+      mockLeadRepository.count
         .mockResolvedValueOnce(100) // total
         .mockResolvedValueOnce(75) // with email
         .mockResolvedValueOnce(90); // with hash
@@ -226,7 +223,7 @@ describe('DeduplicationService', () => {
     });
 
     it('should handle zero total leads without division by zero', async () => {
-      mockPrismaService.lead.count
+      mockLeadRepository.count
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0);

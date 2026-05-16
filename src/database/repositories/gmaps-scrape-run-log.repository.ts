@@ -34,6 +34,8 @@ export interface GmapsScrapeRunLogFinishData {
   errorSummary?: string;
   /** Probe telemetry written atomically alongside the finish fields (no separate read-modify-write). */
   probeStats?: ProbeStats;
+  /** Filter outcome telemetry — stored in metadata.filterStats, no extra columns. */
+  filterStats?: { totalFilteredPlaces: number; byReason: Record<string, number> };
 }
 
 @Injectable()
@@ -72,10 +74,10 @@ export class GmapsScrapeRunLogRepository {
       },
     }).catch(() => {});
 
+    const metadataPatch: Record<string, unknown> = {};
+
     if (data.probeStats) {
-      // Explicit field spread satisfies Prisma.InputJsonObject's index signature requirement.
-      // DB-side JSONB || merge (no SELECT round-trip) preserves any metadata written by start().
-      const probeMetadata: Prisma.InputJsonObject = {
+      metadataPatch['probe'] = {
         mode: data.probeStats.mode,
         scrolls: data.probeStats.scrolls,
         hitRate: data.probeStats.hitRate,
@@ -84,7 +86,17 @@ export class GmapsScrapeRunLogRepository {
         knownDupCount: data.probeStats.knownDupCount,
         probeSeenCount: data.probeStats.probeSeenCount,
       };
-      const patch = JSON.stringify({ probe: probeMetadata });
+    }
+
+    if (data.filterStats) {
+      metadataPatch['filterStats'] = {
+        totalFilteredPlaces: data.filterStats.totalFilteredPlaces,
+        byReason: data.filterStats.byReason,
+      };
+    }
+
+    if (Object.keys(metadataPatch).length > 0) {
+      const patch = JSON.stringify(metadataPatch);
       await this.prisma.$executeRaw`
         UPDATE "GmapsScrapeRunLog"
         SET "metadata" = COALESCE("metadata", '{}'::jsonb) || ${patch}::jsonb
